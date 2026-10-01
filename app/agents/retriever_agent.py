@@ -1,10 +1,10 @@
 import time
 import logging
 from typing import Dict, Any, List
-from app.sql.db import db_manager
-from app.sql.validator import sql_validator, SecurityValidationError
-from app.core.llm import get_llm
-from app.config import settings
+from app.utils.core_utils.db_utils import db_manager
+from app.tools.retriever_tool import sql_validator, SecurityValidationError
+from app.llms.llm_factory import get_llm
+from app.config.env_config import settings
 
 logger = logging.getLogger("SQLAgent")
 logger.setLevel(logging.INFO)

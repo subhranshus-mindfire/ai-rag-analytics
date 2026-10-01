@@ -1,10 +1,10 @@
 import re
 from typing import Dict, Any, List
 from langgraph.graph import StateGraph, START, END
-from app.graph.state import AgentState
-from app.rag.pipeline import rag_pipeline
-from app.sql.agent import sql_agent
-from app.core.llm import get_llm
+from app.agents.base_agent import AgentState
+from app.services.core_services.retrieval_service import retrieval_service
+from app.agents.retriever_agent import sql_agent
+from app.llms.llm_factory import get_llm
 
 # In-memory session store for conversation history
 session_memory_store: Dict[str, List[Dict[str, str]]] = {}
@@ -61,7 +61,7 @@ def classify_intent(state: AgentState) -> Dict[str, Any]:
 
 def rag_node(state: AgentState) -> Dict[str, Any]:
     """Handles questions requiring document search and retrieval."""
-    res = rag_pipeline.ask(state["question"])
+    res = retrieval_service.ask(state["question"])
     return {
         "rag_result": res,
         "final_answer": res["answer"],
@@ -84,7 +84,7 @@ def sql_node(state: AgentState) -> Dict[str, Any]:
 def combined_node(state: AgentState) -> Dict[str, Any]:
     """Handles multi-faceted questions needing both RAG documents and SQL data."""
     question = state["question"]
-    rag_res = rag_pipeline.ask(question)
+    rag_res = retrieval_service.ask(question)
     sql_res = sql_agent.answer_question(question)
 
     synthesis_prompt = (
