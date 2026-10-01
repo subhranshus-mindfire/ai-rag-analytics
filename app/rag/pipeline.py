@@ -1,0 +1,94 @@
+from typing import Dict, Any, List
+from pathlib import Path
+from app.rag.loader import document_loader
+from app.rag.embeddings import embedding_manager
+from app.rag.vector_store import qdrant_store
+from app.core.llm import get_llm
+from app.config import settings
+
+class RAGPipeline:
+    """End-to-end Retrieval-Augmented Generation (RAG) pipeline."""
+
+    def __init__(self):
+        self.loader = document_loader
+        self.embeddings = embedding_manager
+        self.vector_store = qdrant_store
+
+    def ingest_document(self, file_path: str) -> Dict[str, Any]:
+        """Ingests, chunks, embeds, and stores a document in Qdrant."""
+        path = Path(file_path)
+        content = self.loader.load_file(str(path))
+        
+        chunks = self.loader.chunk_text(
+            text=content,
+            metadata={"source": path.name, "path": str(path)}
+        )
+
+        if not chunks:
+            return {"status": "empty", "chunks_indexed": 0, "source": path.name}
+
+        texts = [c["text"] for c in chunks]
+        metadatas = [c["metadata"] for c in chunks]
+
+        # Generate embeddings
+        vectors = self.embeddings.embed_documents(texts)
+
+        # Store in Qdrant
+        point_ids = self.vector_store.add_documents(
+            texts=texts,
+            embeddings=vectors,
+            metadatas=metadatas
+        )
+
+        return {
+            "status": "success",
+            "source": path.name,
+            "chunks_indexed": len(point_ids),
+            "total_documents": self.vector_store.count()
+        }
+
+    def retrieve(self, query: str, top_k: int = 3) -> List[Dict[str, Any]]:
+        """Finds top_k relevant context chunks for a given query."""
+        query_vector = self.embeddings.embed_query(query)
+        hits = self.vector_store.search(query_vector=query_vector, top_k=top_k)
+        return hits
+
+    def ask(self, question: str, top_k: int = 3) -> Dict[str, Any]:
+        """Runs full RAG cycle: retrieves context, creates prompt, and calls LLM."""
+        hits = self.retrieve(question, top_k=top_k)
+
+        if not hits:
+            context_text = "No relevant context found in the database."
+        else:
+            context_text = "\n\n---\n\n".join(
+                f"[Source: {hit['metadata'].get('source', 'Unknown')} - Score: {hit['score']:.2f}]\n{hit['content']}"
+                for hit in hits
+            )
+
+        prompt = (
+            "You are a helpful, accurate enterprise AI assistant. "
+            "Answer the user's question strictly using the provided context below. "
+            "If the answer cannot be found in the context, explicitly state that the information is unavailable.\n\n"
+            f"### Context:\n{context_text}\n\n"
+            f"### Question:\n{question}\n\n"
+            "### Answer:"
+        )
+
+        llm = get_llm()
+        
+        try:
+            # LangChain Chat invocation
+            response = llm.invoke(prompt)
+            answer = response.content if hasattr(response, "content") else str(response)
+        except Exception as e:
+            answer = f"Error generating answer with {settings.LLM_PROVIDER}: {str(e)}"
+
+        return {
+            "question": question,
+            "answer": answer,
+            "sources": list({h["metadata"].get("source", "Unknown") for h in hits}),
+            "retrieved_chunks": hits,
+            "provider": settings.LLM_PROVIDER
+        }
+
+rag_pipeline = RAGPipeline()

@@ -1,0 +1,18 @@
+# Acme Analytics - Enterprise Policies & Architecture Guide
+
+## 1. Data Retention & Privacy Policy
+Acme Analytics retains user transaction logs and relational analytics data for a period of 7 years in compliance with financial auditing standards. Personally Identifiable Information (PII) is encrypted at rest using AES-256 and masked in non-production environments.
+
+## 2. Customer Support & SLA Tiers
+- Consumer Tier: Email support with standard response times within 48 business hours.
+- SMB Tier: Priority email and ticketing support with response times within 12 business hours.
+- Enterprise Tier: Dedicated 24/7 technical account manager, 99.99% uptime SLA, and guaranteed 1-hour critical response time.
+
+## 3. Product Pricing & Subscription Terms
+- Developer API Seat: \$49/month per developer, includes 100,000 monthly API credits.
+- AI Analytics Dashboard: \$499/month, supports up to 10 concurrent analysts and interactive Text-to-SQL querying.
+- Cloud Vector Engine Pro: \$999/month, managed Qdrant-backed vector search supporting up to 10 million vectors.
+- Enterprise Support SLA: \$1,500/month add-on for 24/7 dedicated support.
+
+## 4. Refund & Cancellation Terms
+Annual subscriptions may be refunded within 30 days of purchase upon written notice. Monthly subscriptions may be cancelled at any time and remain active until the end of the billing cycle; partial month refunds are not issued.
