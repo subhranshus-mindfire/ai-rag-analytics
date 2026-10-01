@@ -106,7 +106,11 @@ export function App() {
 
       <main className="chat-area">
         <Header health={health} onClearChat={handleClearChat} />
-        <ChatWindow messages={messages} isProcessing={isProcessing} />
+        <ChatWindow
+          messages={messages}
+          isProcessing={isProcessing}
+          onSelectPrompt={handleSelectPrompt}
+        />
         <ChatInput
           input={input}
           setInput={setInput}

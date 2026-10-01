@@ -1,95 +1,395 @@
 /**
- * React 18 Production Single-Page Application
- * Follows modern React component patterns, hooks, and clean state boundaries.
+ * Modern, Minimalist React 18 Single-Page Application
+ * Zero-dependency, pure React components with integrated Markdown formatting and SVG iconography.
  */
 import { API } from "./api.js";
 
 const { useState, useEffect, useRef, createElement: h } = window.React || {};
 
-/**
- * Message Bubble Component
- */
+// ==========================================
+// Modern SVG Icons
+// ==========================================
+function IconSparkles({ size = 16, className = "" }) {
+  return h(
+    "svg",
+    {
+      width: size,
+      height: size,
+      viewBox: "0 0 24 24",
+      fill: "none",
+      stroke: "currentColor",
+      strokeWidth: 2,
+      strokeLinecap: "round",
+      strokeLinejoin: "round",
+      className,
+    },
+    h("path", { d: "m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z" })
+  );
+}
+
+function IconUser({ size = 16, className = "" }) {
+  return h(
+    "svg",
+    {
+      width: size,
+      height: size,
+      viewBox: "0 0 24 24",
+      fill: "none",
+      stroke: "currentColor",
+      strokeWidth: 2,
+      strokeLinecap: "round",
+      strokeLinejoin: "round",
+      className,
+    },
+    h("path", { d: "M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" }),
+    h("circle", { cx: 12, cy: 7, r: 4 })
+  );
+}
+
+function IconDocument({ size = 14, className = "" }) {
+  return h(
+    "svg",
+    {
+      width: size,
+      height: size,
+      viewBox: "0 0 24 24",
+      fill: "none",
+      stroke: "currentColor",
+      strokeWidth: 2,
+      strokeLinecap: "round",
+      strokeLinejoin: "round",
+      className,
+    },
+    h("path", { d: "M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" }),
+    h("polyline", { points: "14 2 14 8 20 8" })
+  );
+}
+
+function IconDatabase({ size = 14, className = "" }) {
+  return h(
+    "svg",
+    {
+      width: size,
+      height: size,
+      viewBox: "0 0 24 24",
+      fill: "none",
+      stroke: "currentColor",
+      strokeWidth: 2,
+      strokeLinecap: "round",
+      strokeLinejoin: "round",
+      className,
+    },
+    h("ellipse", { cx: 12, cy: 5, rx: 9, ry: 3 }),
+    h("path", { d: "M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" }),
+    h("path", { d: "M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" })
+  );
+}
+
+function IconSend({ size = 16, className = "" }) {
+  return h(
+    "svg",
+    {
+      width: size,
+      height: size,
+      viewBox: "0 0 24 24",
+      fill: "none",
+      stroke: "currentColor",
+      strokeWidth: 2.5,
+      strokeLinecap: "round",
+      strokeLinejoin: "round",
+      className,
+    },
+    h("line", { x1: 12, y1: 19, x2: 12, y2: 5 }),
+    h("polyline", { points: "5 12 12 5 19 12" })
+  );
+}
+
+function IconTrash({ size = 14, className = "" }) {
+  return h(
+    "svg",
+    {
+      width: size,
+      height: size,
+      viewBox: "0 0 24 24",
+      fill: "none",
+      stroke: "currentColor",
+      strokeWidth: 2,
+      strokeLinecap: "round",
+      strokeLinejoin: "round",
+      className,
+    },
+    h("polyline", { points: "3 6 5 6 21 6" }),
+    h("path", { d: "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" })
+  );
+}
+
+function IconRefresh({ size = 14, className = "" }) {
+  return h(
+    "svg",
+    {
+      width: size,
+      height: size,
+      viewBox: "0 0 24 24",
+      fill: "none",
+      stroke: "currentColor",
+      strokeWidth: 2,
+      strokeLinecap: "round",
+      strokeLinejoin: "round",
+      className,
+    },
+    h("path", { d: "M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" })
+  );
+}
+
+function IconCopy({ size = 13, className = "" }) {
+  return h(
+    "svg",
+    {
+      width: size,
+      height: size,
+      viewBox: "0 0 24 24",
+      fill: "none",
+      stroke: "currentColor",
+      strokeWidth: 2,
+      strokeLinecap: "round",
+      strokeLinejoin: "round",
+      className,
+    },
+    h("rect", { width: 14, height: 14, x: 8, y: 8, rx: 2, ry: 2 }),
+    h("path", { d: "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" })
+  );
+}
+
+// ==========================================
+// Zero-Dependency Secure Markdown Formatter
+// ==========================================
+function parseMarkdown(md) {
+  if (!md) return "";
+
+  // 1. Escape HTML
+  let html = md
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  // 2. Fenced Code blocks
+  html = html.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    const raw = code.trim();
+    const encoded = encodeURIComponent(raw);
+    return `<div class="code-block-wrapper">
+      <div class="code-block-header">
+        <span>${lang || "code"}</span>
+        <button type="button" class="copy-code-btn" onclick="navigator.clipboard.writeText(decodeURIComponent('${encoded}')).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
+      </div>
+      <pre><code>${raw}</code></pre>
+    </div>`;
+  });
+
+  // 3. Tables
+  html = html.replace(/((?:\|[^\n]+\|\r?\n)+)/g, (tableMatch) => {
+    const rows = tableMatch.trim().split("\n").filter((r) => r.trim());
+    if (rows.length < 2) return tableMatch;
+    let tableHtml = '<div class="table-responsive"><table class="markdown-table">';
+    rows.forEach((row, idx) => {
+      if (row.includes("---")) return;
+      const cols = row.split("|").filter((_, i, arr) => i > 0 && i < arr.length - 1);
+      const tag = idx === 0 ? "th" : "td";
+      tableHtml += "<tr>" + cols.map((c) => `<${tag}>${c.trim()}</${tag}>`).join("") + "</tr>";
+    });
+    tableHtml += "</table></div>";
+    return tableHtml;
+  });
+
+  // 4. Inline code
+  html = html.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+
+  // 5. Headers
+  html = html.replace(/^### (.*$)/gim, "<h3>$1</h3>");
+  html = html.replace(/^## (.*$)/gim, "<h2>$1</h2>");
+  html = html.replace(/^# (.*$)/gim, "<h1>$1</h1>");
+
+  // 6. Bold & Italics
+  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+
+  // 7. Blockquotes
+  html = html.replace(/^\> (.*$)/gim, "<blockquote>$1</blockquote>");
+
+  // 8. Unordered Lists
+  html = html.replace(/^\s*[-*]\s+(.*$)/gim, "<ul><li>$1</li></ul>");
+  html = html.replace(/<\/ul>\s*<ul>/g, "");
+
+  // 9. Ordered Lists
+  html = html.replace(/^\s*\d+\.\s+(.*$)/gim, "<ol><li>$1</li></ol>");
+  html = html.replace(/<\/ol>\s*<ol>/g, "");
+
+  // 10. Paragraphs
+  html = html
+    .split("\n\n")
+    .map((chunk) => {
+      const trimmed = chunk.trim();
+      if (!trimmed) return "";
+      if (
+        trimmed.startsWith("<h") ||
+        trimmed.startsWith("<ul") ||
+        trimmed.startsWith("<ol") ||
+        trimmed.startsWith("<div") ||
+        trimmed.startsWith("<blockquote") ||
+        trimmed.startsWith("<table")
+      ) {
+        return trimmed;
+      }
+      return `<p>${trimmed.replace(/\n/g, "<br/>")}</p>`;
+    })
+    .join("");
+
+  return html;
+}
+
+// ==========================================
+// SQL Accordion Component
+// ==========================================
+function SQLAccordion({ query, logs }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = (e) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(query);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return h(
+    "details",
+    { className: "sql-card" },
+    h(
+      "summary",
+      null,
+      h("span", { style: { display: "flex", alignItems: "center", gap: "6px" } },
+        h(IconDatabase, { size: 14 }),
+        "Executed SQL Query"
+      ),
+      h(
+        "div",
+        { className: "sql-metrics" },
+        logs?.latency_ms !== undefined &&
+          h("span", { className: "metric-tag" }, `${logs.latency_ms}ms`),
+        logs?.row_count !== undefined &&
+          h("span", { className: "metric-tag" }, `${logs.row_count} rows`)
+      )
+    ),
+    h(
+      "div",
+      { className: "sql-content" },
+      h("pre", { className: "sql-code" }, query),
+      h(
+        "div",
+        { className: "sql-footer" },
+        h("span", null, `Engine: ${logs?.db_type || "PostgreSQL"}`),
+        h(
+          "button",
+          {
+            type: "button",
+            className: "copy-code-btn",
+            onClick: handleCopy,
+          },
+          copied ? "✓ Copied" : "Copy SQL"
+        )
+      )
+    )
+  );
+}
+
+// ==========================================
+// Message Bubble Component
+// ==========================================
 function MessageBubble({ message }) {
   const isUser = message.role === "user";
 
   if (isUser) {
     return h(
       "div",
-      { className: "message user" },
-      h("div", { className: "avatar" }, "👤"),
+      { className: "message-row user" },
       h(
         "div",
-        { className: "message-content" },
-        h("div", { className: "bubble" }, message.content)
+        { className: "message-body" },
+        h("div", { className: "user-bubble" }, message.content)
+      ),
+      h(
+        "div",
+        { className: "avatar-badge user-avatar" },
+        h(IconUser, { size: 16 })
       )
     );
   }
 
   const intent = (message.intent || "rag").toLowerCase();
+  const intentLabels = {
+    rag: "Document RAG",
+    sql: "SQL Analytics",
+    combined: "Hybrid RAG + SQL",
+    error: "System Notice",
+  };
+
+  const formattedHtml = parseMarkdown(message.content);
 
   return h(
     "div",
-    { className: "message assistant" },
-    h("div", { className: "avatar" }, "🤖"),
+    { className: "message-row assistant" },
     h(
       "div",
-      { className: "message-content" },
+      { className: "avatar-badge assistant-avatar" },
+      h(IconSparkles, { size: 16 })
+    ),
+    h(
+      "div",
+      { className: "message-body" },
       message.intent &&
         h(
           "div",
-          { className: "meta-row" },
+          null,
           h(
             "span",
-            { className: `intent-badge ${intent}` },
-            intent.toUpperCase()
+            { className: `intent-pill ${intent}` },
+            intentLabels[intent] || intent.toUpperCase()
           )
         ),
       h(
         "div",
-        { className: "bubble" },
-        h("div", { style: { whiteSpace: "pre-wrap", lineHeight: "1.6" } }, message.content),
+        { className: "assistant-bubble" },
+        h("div", {
+          className: "markdown-body",
+          dangerouslySetInnerHTML: { __html: formattedHtml },
+        }),
         message.sql_query &&
+          h(SQLAccordion, { query: message.sql_query, logs: message.sql_logs }),
+        message.sources &&
+          message.sources.length > 0 &&
           h(
-            "details",
-            { className: "sql-accordion" },
-            h(
-              "summary",
-              null,
-              `⚡ View Executed SQL Query (${message.sql_logs?.latency_ms ? `${message.sql_logs.latency_ms}ms` : ""} ${message.sql_logs?.row_count !== undefined ? `${message.sql_logs.row_count} rows` : ""})`
-            ),
-            h(
-              "pre",
-              { className: "sql-code-block" },
-              h("code", null, message.sql_query)
-            ),
-            message.sql_logs &&
+            "div",
+            { className: "sources-container" },
+            h("span", { className: "sources-label" }, "Sources:"),
+            message.sources.map((src, i) =>
               h(
-                "div",
-                { className: "sql-meta-info" },
-                `Engine: ${message.sql_logs.db_type || "PostgreSQL"} • ${message.sql_logs.timestamp || ""}`
+                "span",
+                { key: i, className: "source-chip" },
+                h(IconDocument, { size: 12 }),
+                src
               )
+            )
           )
-      ),
-      message.sources &&
-        message.sources.length > 0 &&
-        h(
-          "div",
-          { className: "meta-row" },
-          message.sources.map((src, i) =>
-            h("span", { key: i, className: "source-badge" }, `📄 ${src}`)
-          )
-        )
+      )
     )
   );
 }
 
-/**
- * Header Component
- */
+// ==========================================
+// Header Component
+// ==========================================
 function Header({ health, onClearChat }) {
-  const dbType = health?.database?.type ? health.database.type.toUpperCase() : "DB";
-  const qdrantStatus = health?.vector_store?.status === "connected" ? "Qdrant Online" : "Vector Ready";
-  const provider = health?.llm_provider ? health.llm_provider.toUpperCase() : "AI";
+  const dbType = health?.database?.type ? health.database.type.toUpperCase() : "PostgreSQL";
+  const vectorStore = health?.vector_store?.status === "connected" ? "Qdrant Ready" : "Vector DB";
+  const provider = health?.llm_provider ? health.llm_provider.toUpperCase() : "Gemini / Groq";
 
   return h(
     "header",
@@ -97,30 +397,30 @@ function Header({ health, onClearChat }) {
     h(
       "div",
       { className: "header-status" },
-      h("div", { className: "status-indicator" }),
-      h("span", null, `${dbType} • ${qdrantStatus} • ${provider}`)
+      h(
+        "div",
+        { className: "status-badge" },
+        h("div", { className: "status-pulse" }),
+        h("span", null, `${dbType} · ${vectorStore} · ${provider}`)
+      )
     ),
     h(
-      "div",
-      null,
-      h(
-        "button",
-        {
-          type: "button",
-          className: "btn-secondary",
-          onClick: onClearChat,
-          style: { padding: "6px 12px", fontSize: "12px" },
-        },
-        h("span", null, "🗑️"),
-        " New Chat"
-      )
+      "button",
+      {
+        type: "button",
+        className: "btn-icon-label",
+        onClick: onClearChat,
+        title: "Start a fresh session",
+      },
+      h(IconTrash, { size: 13 }),
+      h("span", null, "New Chat")
     )
   );
 }
 
-/**
- * Sidebar Component
- */
+// ==========================================
+// Sidebar Component
+// ==========================================
 function Sidebar({ documents, onSelectPrompt, onIngest, isIngesting }) {
   const samplePrompts = [
     "What is the company leave policy?",
@@ -135,12 +435,20 @@ function Sidebar({ documents, onSelectPrompt, onIngest, isIngesting }) {
     h(
       "div",
       { className: "sidebar-header" },
-      h("div", { className: "logo-badge" }, "⚛️"),
       h(
         "div",
-        null,
-        h("div", { className: "app-title" }, "GenAI Assistant"),
-        h("div", { className: "app-subtitle" }, "React 18 • RAG & SQL")
+        { className: "sidebar-brand" },
+        h(
+          "div",
+          { className: "brand-icon-wrapper" },
+          h(IconSparkles, { size: 18 })
+        ),
+        h(
+          "div",
+          { className: "brand-text" },
+          h("div", { className: "app-title" }, "Data Assistant"),
+          h("div", { className: "app-subtitle" }, "LangGraph · RAG · SQL")
+        )
       )
     ),
     h(
@@ -153,27 +461,33 @@ function Sidebar({ documents, onSelectPrompt, onIngest, isIngesting }) {
           "div",
           { className: "section-label" },
           h("span", null, "Knowledge Base"),
-          h("span", { className: "doc-tag" }, `${documents.length} Files`)
+          h("span", { className: "doc-count-badge" }, `${documents.length} Files`)
         ),
         h(
           "ul",
           { className: "doc-list" },
           documents.length === 0
-            ? h("li", { style: { fontSize: "12px", color: "var(--text-muted)" } }, "No documents indexed.")
-            : documents.map((doc) =>
-                h(
+            ? h("li", { style: { fontSize: "12px", color: "var(--text-dim)", padding: "4px 8px" } }, "No documents indexed.")
+            : documents.map((doc) => {
+                const ext = (doc.source || "").split(".").pop().toUpperCase() || "DOC";
+                return h(
                   "li",
                   { key: doc.document_id || doc.source, className: "doc-item" },
-                  h("span", { className: "doc-name", title: doc.source }, `📄 ${doc.source}`),
-                  h("span", { className: "doc-tag" }, `${doc.chunks_count || 1} chunks`)
-                )
-              )
+                  h(
+                    "div",
+                    { className: "doc-info" },
+                    h(IconDocument, { size: 13, className: "doc-icon" }),
+                    h("span", { className: "doc-name", title: doc.source }, doc.source)
+                  ),
+                  h("span", { className: "doc-tag" }, ext)
+                );
+              })
         )
       ),
       h(
         "div",
         null,
-        h("div", { className: "section-label" }, "Example Inquiries"),
+        h("div", { className: "section-label" }, "Suggested Queries"),
         h(
           "div",
           { className: "sample-queries" },
@@ -199,20 +513,20 @@ function Sidebar({ documents, onSelectPrompt, onIngest, isIngesting }) {
         "button",
         {
           type: "button",
-          className: "btn-secondary",
+          className: "btn-sidebar",
           disabled: isIngesting,
           onClick: onIngest,
         },
-        h("span", null, "🔄"),
-        isIngesting ? " Ingesting..." : " Ingest Documents"
+        h(IconRefresh, { size: 14 }),
+        h("span", null, isIngesting ? "Ingesting Documents..." : "Re-index Knowledge Base")
       )
     )
   );
 }
 
-/**
- * Chat Input Component
- */
+// ==========================================
+// Modern Chat Input Component
+// ==========================================
 function ChatInput({ input, setInput, onSend, isProcessing }) {
   const textareaRef = useRef(null);
 
@@ -236,39 +550,105 @@ function ChatInput({ input, setInput, onSend, isProcessing }) {
   };
 
   return h(
-    "footer",
-    { className: "chat-input-container" },
+    "div",
+    { className: "chat-input-wrapper" },
     h(
       "div",
-      { className: "input-box" },
-      h("textarea", {
-        ref: textareaRef,
-        className: "chat-textarea",
-        rows: 1,
-        placeholder: "Ask a document question, SQL analytical query, or combined inquiry...",
-        value: input,
-        onChange: handleChange,
-        onKeyDown: handleKeyDown,
-        disabled: isProcessing,
-      }),
+      { className: "input-container" },
       h(
-        "button",
-        {
-          type: "button",
-          className: "send-btn",
-          disabled: isProcessing || !input.trim(),
-          onClick: onSend,
-        },
-        h("span", null, "Send "),
-        h("span", null, "➤")
+        "div",
+        { className: "input-row" },
+        h("textarea", {
+          ref: textareaRef,
+          className: "chat-textarea",
+          rows: 1,
+          placeholder: "Ask about company documents, query database analytics, or hybrid inquiries...",
+          value: input,
+          onChange: handleChange,
+          onKeyDown: handleKeyDown,
+          disabled: isProcessing,
+        }),
+        h(
+          "button",
+          {
+            type: "button",
+            className: "send-button",
+            disabled: isProcessing || !input.trim(),
+            onClick: onSend,
+            title: "Send question (Enter)",
+          },
+          h(IconSend, { size: 16 })
+        )
+      ),
+      h(
+        "div",
+        { className: "input-hint-row" },
+        h("span", { className: "input-hint" }, "Enter to send · Shift+Enter for new line"),
+        h("span", { className: "input-hint" }, "SELECT-only guardrails active")
       )
     )
   );
 }
 
-/**
- * Root Application Component
- */
+// ==========================================
+// Welcome / Empty State Component
+// ==========================================
+function EmptyState({ onSelectPrompt }) {
+  const starters = [
+    {
+      tag: "Document RAG",
+      text: "What is the company leave policy?",
+    },
+    {
+      tag: "SQL Analytics",
+      text: "Which are the top 5 customers by revenue?",
+    },
+    {
+      tag: "Hybrid Routing",
+      text: "What is the refund policy and how much was refunded last month?",
+    },
+    {
+      tag: "Document RAG",
+      text: "What are the customer support SLA response times?",
+    },
+  ];
+
+  return h(
+    "div",
+    { className: "empty-state" },
+    h(
+      "div",
+      { className: "empty-icon-glow" },
+      h(IconSparkles, { size: 28 })
+    ),
+    h("h2", { className: "empty-title" }, "Enterprise Data Assistant"),
+    h(
+      "p",
+      { className: "empty-desc" },
+      "Chat with company policy documents and query relational PostgreSQL database analytics in real time."
+    ),
+    h(
+      "div",
+      { className: "starter-grid" },
+      starters.map((item, idx) =>
+        h(
+          "div",
+          {
+            key: idx,
+            className: "starter-card",
+            onClick: () => onSelectPrompt(item.text),
+          },
+          h("div", { className: "starter-tag" }, item.tag),
+          h("div", { className: "starter-text" }, item.text)
+        )
+      )
+    )
+  );
+}
+
+// ==========================================
+// Root Application Component
+// ==========================================
 export function App() {
   const [sessionId, setSessionId] = useState(() => {
     return localStorage.getItem("genai_react_session") || `session_${Date.now()}`;
@@ -303,7 +683,7 @@ export function App() {
       setDocuments(docsData.documents || []);
       setHealth(healthData);
     } catch (err) {
-      console.error(err);
+      console.error("Failed to load initial data:", err);
     }
   };
 
@@ -333,7 +713,7 @@ export function App() {
         ...prev,
         {
           role: "assistant",
-          content: `⚠️ Error: ${err.message}`,
+          content: `⚠️ An error occurred: ${err.message}`,
           intent: "error",
         },
       ]);
@@ -346,10 +726,10 @@ export function App() {
     setIsIngesting(true);
     try {
       const res = await API.ingestDocuments();
-      alert(`Ingestion Successful!\n${res.total_chunks_indexed} chunks indexed across ${res.files_processed} files.`);
+      alert(`Knowledge base updated:\n${res.total_chunks_indexed} chunks indexed across ${res.files_processed} files.`);
       await loadData();
     } catch (err) {
-      alert(`Ingestion Failed: ${err.message}`);
+      alert(`Ingestion failed: ${err.message}`);
     } finally {
       setIsIngesting(false);
     }
@@ -376,37 +756,35 @@ export function App() {
       h(
         "section",
         { className: "chat-messages" },
-        messages.length === 0
-          ? h(
-              "div",
-              { className: "empty-state" },
-              h("div", { className: "empty-icon" }, "⚛️"),
-              h("h2", { className: "empty-title" }, "Local GenAI Assistant (React 18)"),
-              h(
-                "p",
-                { className: "empty-desc" },
-                "Ask questions about enterprise policy documents, query relational PostgreSQL database analytics, or perform combined multi-agent synthesis."
-              )
-            )
-          : messages.map((msg, i) => h(MessageBubble, { key: i, message: msg })),
-        isProcessing &&
-          h(
-            "div",
-            { className: "message assistant" },
-            h("div", { className: "avatar" }, "🤖"),
+        h(
+          "div",
+          { className: "messages-inner" },
+          messages.length === 0
+            ? h(EmptyState, { onSelectPrompt: (p) => setInput(p) })
+            : messages.map((msg, i) => h(MessageBubble, { key: i, message: msg })),
+          isProcessing &&
             h(
               "div",
-              { className: "message-content" },
+              { className: "message-row assistant" },
               h(
                 "div",
-                { className: "bubble typing-indicator" },
-                h("div", { className: "typing-dot" }),
-                h("div", { className: "typing-dot" }),
-                h("div", { className: "typing-dot" })
+                { className: "avatar-badge assistant-avatar" },
+                h(IconSparkles, { size: 16 })
+              ),
+              h(
+                "div",
+                { className: "message-body" },
+                h(
+                  "div",
+                  { className: "assistant-bubble typing-box" },
+                  h("div", { className: "typing-dot" }),
+                  h("div", { className: "typing-dot" }),
+                  h("div", { className: "typing-dot" })
+                )
               )
-            )
-          ),
-        h("div", { ref: messagesEndRef })
+            ),
+          h("div", { ref: messagesEndRef })
+        )
       ),
       h(ChatInput, {
         input,
