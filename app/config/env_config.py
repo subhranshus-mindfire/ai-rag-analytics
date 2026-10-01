@@ -2,9 +2,10 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load .env file
-BASE_DIR = Path(__file__).resolve().parent.parent
+# Load .env file from project root
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 load_dotenv(BASE_DIR / ".env")
+load_dotenv()
 
 class Settings:
     APP_NAME: str = os.getenv("APP_NAME", "AI RAG & Analytics Assistant")
