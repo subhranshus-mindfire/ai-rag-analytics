@@ -37,17 +37,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+# Mount static asset directory
+static_dir = Path("static")
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory="static"), name="static")
+
 # Register Assignment Routers
 app.include_router(health_router)
 app.include_router(chat_router)
 app.include_router(documents_router)
 
 @app.get("/")
-def root():
+def serve_ui():
+    """Serves the interactive web interface."""
+    index_file = Path("static/index.html")
+    if index_file.exists():
+        return FileResponse(index_file)
+    return {"message": "Frontend static/index.html not found"}
+
+@app.get("/ui")
+def serve_ui_alias():
+    return serve_ui()
+
+@app.get("/api")
+def api_endpoints_info():
+    """Returns metadata for all available REST endpoints."""
     return {
         "name": settings.APP_NAME,
         "version": "1.0.0",
         "endpoints": {
+            "ui": "GET / or GET /ui",
             "chat": "POST /chat",
             "ingest_documents": "POST /documents/ingest",
             "list_documents": "GET /documents",
