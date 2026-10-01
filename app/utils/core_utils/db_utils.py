@@ -2,7 +2,7 @@ import re
 from pathlib import Path
 from typing import Dict, List, Any, Tuple
 from sqlalchemy import create_engine, text, inspect
-from app.config import settings
+from app.config.env_config import settings
 
 class DatabaseManager:
     """Manages database connection to PostgreSQL with fallback to SQLite."""

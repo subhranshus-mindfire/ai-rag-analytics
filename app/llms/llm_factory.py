@@ -1,5 +1,5 @@
 from typing import Optional
-from app.config import settings
+from app.config.env_config import settings
 
 def get_llm(temperature: float = 0.2):
     """

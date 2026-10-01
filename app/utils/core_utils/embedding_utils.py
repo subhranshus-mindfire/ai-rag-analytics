@@ -1,6 +1,6 @@
 import hashlib
 from typing import List
-from app.config import settings
+from app.config.env_config import settings
 
 class EmbeddingManager:
     """Manages embedding generation using fastembed or fallback providers."""

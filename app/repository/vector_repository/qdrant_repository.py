@@ -1,7 +1,7 @@
 import uuid
 import math
 from typing import List, Dict, Any, Optional
-from app.config import settings
+from app.config.env_config import settings
 
 class QdrantStore:
     """Wrapper around Qdrant Vector DB with automatic embedded/server support."""
