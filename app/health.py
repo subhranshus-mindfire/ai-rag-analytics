@@ -1,7 +1,7 @@
 from fastapi import APIRouter
-from app.config import settings
-from app.rag.vector_store import qdrant_store
-from app.sql.db import db_manager
+from app.config.env_config import settings
+from app.repository.vector_repository.qdrant_repository import qdrant_store
+from app.utils.core_utils.db_utils import db_manager
 
 router = APIRouter(tags=["Health"])
 

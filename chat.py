@@ -10,8 +10,9 @@ from pathlib import Path
 # Add project root to sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from app.rag.pipeline import rag_pipeline
-from app.config import settings
+from app.services.core_services.ingestion_service import ingestion_service
+from app.services.core_services.retrieval_service import retrieval_service
+from app.config.env_config import settings
 
 def main():
     print("=" * 65)
@@ -21,7 +22,7 @@ def main():
     
     sample_file = "data/docs/company_policies.txt"
     if Path(sample_file).exists():
-        result = rag_pipeline.ingest_document(sample_file)
+        result = ingestion_service.ingest_document(sample_file)
         print(f"✅ Ingested '{sample_file}' ({result.get('chunks_indexed', 0)} chunks indexed).")
     
     print("=" * 65)
@@ -38,7 +39,7 @@ def main():
                 break
 
             print("\n🔍 Retrieving context & thinking...")
-            response = rag_pipeline.ask(question, top_k=2)
+            response = retrieval_service.ask(question, top_k=2)
 
             print(f"\n🤖 Assistant ({response['provider']}):")
             print(response["answer"])
@@ -54,4 +55,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
