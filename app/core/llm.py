@@ -14,11 +14,28 @@ def get_llm(temperature: float = 0.2):
             return _create_dummy_llm("Groq API key not set in .env. Please set GROQ_API_KEY.")
         try:
             from langchain_groq import ChatGroq
-            return ChatGroq(
+            model_name = settings.GROQ_MODEL
+            if "llama" in model_name or not model_name:
+                model_name = "openai/gpt-oss-120b"
+
+            primary = ChatGroq(
                 api_key=settings.GROQ_API_KEY,
-                model=settings.GROQ_MODEL,
+                model=model_name,
                 temperature=temperature,
             )
+            # Automatic failover to Gemini if Groq fails
+            if settings.GOOGLE_API_KEY:
+                try:
+                    from langchain_google_genai import ChatGoogleGenerativeAI
+                    backup = ChatGoogleGenerativeAI(
+                        google_api_key=settings.GOOGLE_API_KEY,
+                        model="gemini-3.8-flash",
+                        temperature=temperature,
+                    )
+                    return primary.with_fallbacks([backup])
+                except Exception:
+                    pass
+            return primary
         except ImportError:
             raise ImportError("langchain-groq is required for Groq. Install with `pip install langchain-groq`.")
 
