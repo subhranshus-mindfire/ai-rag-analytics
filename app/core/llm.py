@@ -26,12 +26,36 @@ def get_llm(temperature: float = 0.2):
         if not settings.GOOGLE_API_KEY:
             return _create_dummy_llm("Google API key not set in .env. Please set GOOGLE_API_KEY.")
         try:
+            # Silence internal SDK AFC warning
+            try:
+                from google.genai.models import Models
+                Models._logged_afc_warning = True
+            except Exception:
+                pass
+
             from langchain_google_genai import ChatGoogleGenerativeAI
-            return ChatGoogleGenerativeAI(
+            model_name = settings.GEMINI_MODEL
+            if "2.5" in model_name or not model_name:
+                model_name = "gemini-3.8-flash"
+
+            primary = ChatGoogleGenerativeAI(
                 google_api_key=settings.GOOGLE_API_KEY,
-                model=settings.GEMINI_MODEL,
+                model=model_name,
                 temperature=temperature,
             )
+            # Automatic failover to Groq if Gemini hits rate limits / 429
+            if settings.GROQ_API_KEY:
+                try:
+                    from langchain_groq import ChatGroq
+                    backup = ChatGroq(
+                        api_key=settings.GROQ_API_KEY,
+                        model=settings.GROQ_MODEL,
+                        temperature=temperature,
+                    )
+                    return primary.with_fallbacks([backup])
+                except Exception:
+                    pass
+            return primary
         except ImportError:
             raise ImportError("langchain-google-genai is required. Install with `pip install langchain-google-genai`.")
 

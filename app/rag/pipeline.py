@@ -79,7 +79,8 @@ class RAGPipeline:
         try:
             # LangChain Chat invocation
             response = llm.invoke(prompt)
-            answer = response.content if hasattr(response, "content") else str(response)
+            raw_content = response.content if hasattr(response, "content") else str(response)
+            answer = self._clean_content(raw_content)
         except Exception as e:
             answer = f"Error generating answer with {settings.LLM_PROVIDER}: {str(e)}"
 
@@ -90,5 +91,22 @@ class RAGPipeline:
             "retrieved_chunks": hits,
             "provider": settings.LLM_PROVIDER
         }
+
+    def _clean_content(self, content) -> str:
+        """Extract clean human-readable text from string, list of blocks, or dictionary response contents."""
+        if isinstance(content, str):
+            return content.strip()
+        if isinstance(content, list):
+            text_parts = []
+            for item in content:
+                if isinstance(item, dict) and "text" in item:
+                    text_parts.append(item["text"])
+                elif isinstance(item, str):
+                    text_parts.append(item)
+                elif hasattr(item, "text"):
+                    text_parts.append(getattr(item, "text"))
+            if text_parts:
+                return "\n".join(text_parts).strip()
+        return str(content).strip()
 
 rag_pipeline = RAGPipeline()
