@@ -14,12 +14,9 @@ def get_llm(temperature: float = 0.2):
             return _create_dummy_llm("Groq API key not set in .env. Please set GROQ_API_KEY.")
         try:
             from langchain_groq import ChatGroq
-            model_name = settings.GROQ_MODEL
-            if "llama" in model_name or not model_name:
-                model_name = "openai/gpt-oss-120b"
             return ChatGroq(
                 api_key=settings.GROQ_API_KEY,
-                model=model_name,
+                model=settings.GROQ_MODEL,
                 temperature=temperature,
             )
         except ImportError:
