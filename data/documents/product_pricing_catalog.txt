@@ -1,0 +1,15 @@
+# Acme Corporation - Enterprise Product & Services Catalog
+
+## 1. Software Products
+- AI Analytics Dashboard: \$499.00 per month. Includes 10 analyst seats, interactive natural language Text-to-SQL querying, scheduled reports, and custom dashboards.
+- Cloud Vector Engine Pro: \$999.00 per month. Managed Qdrant cluster supporting up to 10,000,000 dense vectors with sub-10ms similarity search latency and daily backups.
+
+## 2. Developer Subscriptions
+- Developer API Seat: \$49.00 per month per developer account. Includes 100,000 monthly API tokens, documentation access, and development sandbox environments.
+
+## 3. Hardware Products
+- Hardware Security Key: \$75.00 per physical device. FIPS 140-3 Level 3 certified hardware authentication token supporting WebAuthn and PKI.
+
+## 4. Professional Services & Support
+- Enterprise Support SLA: \$1,500.00 per month. Add-on package offering 24/7 dedicated telephone support, 1-hour critical response SLA, and direct engineer escalation.
+- Custom Integration Consulting: \$250.00 per hour for bespoke database pipelines and agentic workflow design.

@@ -47,6 +47,35 @@ class RAGPipeline:
             "total_documents": self.vector_store.count()
         }
 
+    def ingest_directory(self, directory_path: str = "data/documents/") -> Dict[str, Any]:
+        """Bulk ingests all supported documents in a directory."""
+        files = self.loader.list_supported_files(directory_path)
+        ingested = []
+        total_chunks = 0
+        for f in files:
+            res = self.ingest_document(str(f))
+            ingested.append(res)
+            total_chunks += res.get("chunks_indexed", 0)
+        return {
+            "status": "success",
+            "files_processed": len(files),
+            "total_chunks_indexed": total_chunks,
+            "results": ingested
+        }
+
+    def list_documents(self) -> List[Dict[str, Any]]:
+        """List all indexed documents in the vector database."""
+        return self.vector_store.list_documents()
+
+    def delete_document(self, document_id: str) -> Dict[str, Any]:
+        """Delete an indexed document by source name or id."""
+        deleted = self.vector_store.delete_document(document_id)
+        return {
+            "status": "deleted" if deleted > 0 else "not_found",
+            "document_id": document_id,
+            "chunks_removed": deleted
+        }
+
     def retrieve(self, query: str, top_k: int = 3) -> List[Dict[str, Any]]:
         """Finds top_k relevant context chunks for a given query."""
         query_vector = self.embeddings.embed_query(query)

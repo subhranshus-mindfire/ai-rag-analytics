@@ -1,0 +1,10 @@
+# Acme Corporation - Global Employee Code of Conduct
+
+## 1. Equal Opportunity & Harassment-Free Workplace
+Acme is committed to providing a diverse, inclusive, and harassment-free work environment for all employees, contractors, and partners regardless of race, gender, religion, sexual orientation, disability, or age.
+
+## 2. Conflicts of Interest
+Employees must avoid any financial or personal interests that conflict with their duties to the company. Engaging in side consulting for direct competitors, or utilizing proprietary code or data for external ventures, is strictly prohibited.
+
+## 3. Whistleblower Protection
+Employees who report unethical behavior, legal violations, or safety hazards in good faith are protected from retaliation under the corporate whistleblower policy. Anonymous reports may be submitted through compliance-hotline@acme.example.com.

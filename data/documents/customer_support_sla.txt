@@ -1,0 +1,16 @@
+# Acme Corporation - Technical Support & Service Level Agreement (SLA)
+
+## 1. Support Tiers & Coverage Hours
+- Consumer Tier: Standard email support available Monday through Friday, 9:00 AM to 5:00 PM EST. Guaranteed initial response within 48 business hours.
+- SMB Tier: Priority ticketing and email support available Monday through Friday, 8:00 AM to 8:00 PM EST. Guaranteed initial response within 12 business hours.
+- Enterprise Tier: 24/7/365 dedicated telephone and live chat support with a dedicated Technical Account Manager (TAM). Guaranteed critical incident response within 1 hour.
+
+## 2. Service Availability & Uptime Guarantee
+Acme guarantees 99.99% monthly service uptime across all Cloud Vector Engine and API endpoints. 
+
+## 3. Downtime Service Credits
+In the event uptime falls below the 99.99% threshold during a calendar month:
+- 99.0% to 99.9%: 10% monthly service credit.
+- 95.0% to 98.9%: 25% monthly service credit.
+- Below 95.0%: 50% monthly service credit.
+Service credits must be requested within 30 days of the affected calendar month.

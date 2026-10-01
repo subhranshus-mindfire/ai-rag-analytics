@@ -1,6 +1,40 @@
 version: '3.8'
 
 services:
+  # 1. FastAPI Application Service
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai_api
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8000}:8000"
+    environment:
+      - APP_NAME=AI Local GenAI Assistant
+      - ENVIRONMENT=production
+      - DEBUG=False
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-openai/gpt-oss-120b}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.8-flash}
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_COLLECTION_NAME=documents
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-ai_user}:${POSTGRES_PASSWORD:-ai_password}@postgres:5432/${POSTGRES_DB:-ai_analytics}
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+
+  # 2. PostgreSQL Relational Database Service
   postgres:
     image: postgres:16-alpine
     container_name: ai_postgres
@@ -20,6 +54,7 @@ services:
       timeout: 5s
       retries: 5
 
+  # 3. Qdrant Vector Database Service
   qdrant:
     image: qdrant/qdrant:latest
     container_name: ai_qdrant
@@ -35,6 +70,17 @@ services:
       timeout: 5s
       retries: 5
 
+  # 4. Local Ollama LLM Service
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ai_ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
 volumes:
   postgres_data:
   qdrant_storage:
+  ollama_data:

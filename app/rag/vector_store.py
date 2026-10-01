@@ -143,4 +143,76 @@ class QdrantStore:
                 pass
         return len(self._fallback_store)
 
+    def list_documents(self) -> List[Dict[str, Any]]:
+        """Returns summary of all indexed documents and their chunk counts."""
+        docs_summary: Dict[str, Dict[str, Any]] = {}
+        
+        if self.client:
+            try:
+                from qdrant_client.http import models
+                scroll_res = self.client.scroll(
+                    collection_name=self.collection_name,
+                    limit=200,
+                    with_payload=True,
+                    with_vectors=False
+                )
+                points, _ = scroll_res
+                for pt in points:
+                    src = pt.payload.get("source", "unknown")
+                    if src not in docs_summary:
+                        docs_summary[src] = {
+                            "document_id": src,
+                            "source": src,
+                            "chunks_count": 0,
+                            "path": pt.payload.get("path", "")
+                        }
+                    docs_summary[src]["chunks_count"] += 1
+                return list(docs_summary.values())
+            except Exception:
+                pass
+
+        # Fallback store
+        for item in self._fallback_store:
+            src = item.get("metadata", {}).get("source", "unknown")
+            if src not in docs_summary:
+                docs_summary[src] = {
+                    "document_id": src,
+                    "source": src,
+                    "chunks_count": 0,
+                    "path": item.get("metadata", {}).get("path", "")
+                }
+            docs_summary[src]["chunks_count"] += 1
+        return list(docs_summary.values())
+
+    def delete_document(self, document_id: str) -> int:
+        """Deletes all chunks associated with a document source or id."""
+        deleted_count = 0
+        if self.client:
+            try:
+                from qdrant_client.http import models
+                self.client.delete(
+                    collection_name=self.collection_name,
+                    points_selector=models.FilterSelector(
+                        filter=models.Filter(
+                            must=[
+                                models.FieldCondition(
+                                    key="source",
+                                    match=models.MatchValue(value=document_id)
+                                )
+                            ]
+                        )
+                    )
+                )
+            except Exception:
+                pass
+
+        # Also purge from fallback store
+        before_len = len(self._fallback_store)
+        self._fallback_store = [
+            item for item in self._fallback_store 
+            if item.get("metadata", {}).get("source") != document_id and item.get("id") != document_id
+        ]
+        deleted_count = before_len - len(self._fallback_store)
+        return deleted_count
+
 qdrant_store = QdrantStore()
