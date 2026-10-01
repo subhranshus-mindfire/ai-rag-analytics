@@ -1,8 +1,8 @@
 """Tests for SQL Agent and Validation."""
 import unittest
-from app.sql.validator import sql_validator, SecurityValidationError
-from app.sql.db import db_manager
-from app.sql.agent import sql_agent
+from app.tools.retriever_tool import sql_validator, SecurityValidationError
+from app.utils.core_utils.db_utils import db_manager
+from app.agents.retriever_agent import sql_agent
 
 class TestSQLAgent(unittest.TestCase):
 
