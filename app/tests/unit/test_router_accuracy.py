@@ -29,6 +29,16 @@ class TestRouterAccuracyAndBranches(unittest.TestCase):
         res_thanks = general_node(state_thanks)
         self.assertIn("welcome", res_thanks["final_answer"].lower())
 
+        # Dismissal ("Leave it")
+        state_dismiss: AgentState = {"question": "Leave it"}
+        res_dismiss = general_node(state_dismiss)
+        self.assertIn("no problem", res_dismiss["final_answer"].lower())
+
+        # Acknowledgment ("Okay")
+        state_ack: AgentState = {"question": "Okay, got it"}
+        res_ack = general_node(state_ack)
+        self.assertIn("understood", res_ack["final_answer"].lower())
+
     def test_route_decision_function(self):
         # 1. SQL branch
         state_sql: AgentState = {"intent": "sql"}
@@ -158,7 +168,7 @@ class TestRouterAccuracyAndBranches(unittest.TestCase):
         self.assertEqual(classify_intent(state_comb)["intent"], "combined")
 
         # Greeting / General heuristic tests
-        for greeting_q in ["Hii", "hello there", "good morning", "thanks", "who are you"]:
+        for greeting_q in ["Hii", "hello there", "good morning", "thanks", "who are you", "Leave it", "never mind", "okay"]:
             state_gen: AgentState = {
                 "session_id": "heuristics",
                 "messages": [],

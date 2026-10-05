@@ -16,21 +16,28 @@ def classify_intent(state: AgentState) -> Dict[str, Any]:
 
     history_text = "\n".join([f"{m['role']}: {m['content']}" for m in history[-4:]]) if history else "None"
 
-    # Fast-path for instant response on greetings / pleasantries to eliminate LLM latency
+    # Fast-path for instant response on greetings, dismissals, and acknowledgments
     q_clean = re.sub(r"[^\w\s]", "", question.lower()).strip()
     tokens = q_clean.split()
-    greeting_words = {"hi", "hii", "hello", "hey", "greetings", "howdy", "sup", "yo", "thanks", "thank you", "thx"}
-    if q_clean in greeting_words or (tokens and tokens[0] in {"hi", "hii", "hello", "hey"} and len(tokens) <= 4):
+    conversational_phrases = {
+        "hi", "hii", "hello", "hey", "greetings", "howdy", "sup", "yo",
+        "thanks", "thank you", "thx", "ok", "okay", "got it", "understood", "alright", "cool",
+        "leave it", "leave that", "never mind", "nevermind", "forget it", "drop it", "cancel", "no worries"
+    }
+    if q_clean in conversational_phrases or (tokens and tokens[0] in {"hi", "hii", "hello", "hey"} and len(tokens) <= 4):
         return {"intent": "general"}
-    if any(phrase in q_clean for phrase in ["good morning", "good afternoon", "good evening", "who are you", "what can you do", "help me"]):
+    if any(phrase in q_clean for phrase in [
+        "leave it", "never mind", "nevermind", "forget it", "drop it",
+        "good morning", "good afternoon", "good evening", "who are you", "what can you do", "help me"
+    ]):
         return {"intent": "general"}
 
     prompt = (
         "You are an intelligent query router for an enterprise GenAI assistant.\n"
         "Classify the user's inquiry into exactly one of four categories:\n"
-        "- 'general': Greetings, small talk, pleasantries (e.g. 'hi', 'hello', 'hey', 'good morning', 'thanks'), or questions asking who you are or what you can do.\n"
+        "- 'general': Greetings, small talk, dismissals (e.g. 'leave it', 'never mind'), pleasantries (e.g. 'hi', 'thanks'), or questions asking who you are or what you can do.\n"
         "- 'sql': Inquiries about numerical data, orders, revenue, customer accounts, sales figures, product stock, or database tables.\n"
-        "- 'rag': Inquiries about company policies, leave/PTO, SLAs, security guidelines, onboarding, employee manuals, or documentation.\n"
+        "- 'rag': Inquiries about company policies, employee leave/PTO, SLAs, security guidelines, onboarding, employee manuals, or documentation.\n"
         "- 'combined': Inquiries that explicitly ask for BOTH policy/documentation information AND numerical database/order metrics.\n\n"
         f"### Recent Conversation History:\n{history_text}\n\n"
         f"### User Question:\n{question}\n\n"
@@ -40,18 +47,18 @@ def classify_intent(state: AgentState) -> Dict[str, Any]:
     def _apply_heuristic(q: str) -> str:
         q_clean = re.sub(r"[^\w\s]", "", q.lower()).strip()
         tokens = q_clean.split()
-        greeting_words = {"hi", "hii", "hello", "hey", "greetings", "howdy", "sup", "yo", "thanks", "thank you", "thx"}
-        if q_clean in greeting_words or (tokens and tokens[0] in {"hi", "hii", "hello", "hey"} and len(tokens) <= 4):
+        if q_clean in conversational_phrases or (tokens and tokens[0] in {"hi", "hii", "hello", "hey"} and len(tokens) <= 4):
             return "general"
-        if any(phrase in q_clean for phrase in ["good morning", "good afternoon", "good evening"]):
-            return "general"
-        if any(phrase in q_clean for phrase in ["who are you", "what can you do", "help me"]):
+        if any(phrase in q_clean for phrase in [
+            "leave it", "never mind", "nevermind", "forget it", "drop it",
+            "good morning", "good afternoon", "good evening", "who are you", "what can you do", "help me"
+        ]):
             return "general"
 
         sql_keywords = ["order", "revenue", "customer", "sale", "price", "count", "top", "sum", "avg", "spend"]
-        doc_keywords = ["policy", "leave", "pto", "sla", "rule", "conduct", "handbook", "guideline", "security"]
+        doc_keywords = ["policy", "pto", "sla", "rule", "conduct", "handbook", "guideline", "security", "vacation"]
         has_sql = any(k in q.lower() for k in sql_keywords)
-        has_doc = any(k in q.lower() for k in doc_keywords)
+        has_doc = any(k in q.lower() for k in doc_keywords) or ("leave" in q.lower() and "leave it" not in q_clean)
         if has_sql and has_doc:
             return "combined"
         elif has_sql:
@@ -144,10 +151,15 @@ def combined_node(state: AgentState) -> Dict[str, Any]:
 
 
 def general_node(state: AgentState) -> Dict[str, Any]:
-    """Handles conversational greetings, pleasantries, and bot capabilities."""
-    question = state["question"].strip().lower()
-    if any(q in question for q in ["thank", "thx"]):
+    """Handles conversational greetings, dismissals, acknowledgments, and bot capabilities."""
+    q = state["question"].strip().lower()
+
+    if any(k in q for k in ["thank", "thx"]):
         answer = "You're welcome! Let me know if you need anything else from our documents or database."
+    elif any(k in q for k in ["leave it", "never mind", "nevermind", "forget it", "drop it", "cancel", "no worries", "leave that"]):
+        answer = "No problem! Let me know whenever you're ready to query your documents or database."
+    elif any(k in q for k in ["ok", "okay", "got it", "understood", "alright", "cool", "fine"]):
+        answer = "Understood! Feel free to ask whenever you need help."
     else:
         answer = (
             "Hello! I am your enterprise GenAI Data Assistant. I can help you with:\n"
