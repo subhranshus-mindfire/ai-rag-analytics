@@ -48,6 +48,33 @@ class TestAPIEndpoints(unittest.TestCase):
         res = self.client.post("/chat", json={})
         self.assertEqual(res.status_code, 422)
 
+    def test_upload_unsupported_format_rejected(self):
+        res = self.client.post(
+            "/documents/upload",
+            files={"file": ("malicious.exe", b"malicious executable bytes", "application/octet-stream")}
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("Unsupported file format", res.json()["detail"])
+
+    def test_upload_empty_file_rejected(self):
+        res = self.client.post(
+            "/documents/upload",
+            files={"file": ("empty_policy.txt", b"", "text/plain")}
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("empty", res.json()["detail"].lower())
+
+    def test_upload_valid_document(self):
+        res = self.client.post(
+            "/documents/upload",
+            files={"file": ("test_upload_doc.txt", b"Test company policy guidelines for remote work.", "text/plain")}
+        )
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["status"], "success")
+        self.assertEqual(data["filename"], "test_upload_doc.txt")
+        self.assertGreaterEqual(data["chunks_indexed"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -89,6 +89,19 @@ export function App() {
     }
   };
 
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleUpload = async (file) => {
+    setIsUploading(true);
+    try {
+      const res = await api.uploadDocument(file);
+      await loadInitialData();
+      return res;
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const handleClearChat = () => {
     const newSession = `session_${Date.now()}`;
     setSessionId(newSession);
@@ -102,6 +115,8 @@ export function App() {
         onSelectPrompt={handleSelectPrompt}
         onIngest={handleIngest}
         isIngesting={isIngesting}
+        onUpload={handleUpload}
+        isUploading={isUploading}
       />
 
       <main className="chat-area">

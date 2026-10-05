@@ -1,9 +1,61 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
+from pathlib import Path
 from typing import Optional
 from app.services.core_services.ingestion_service import ingestion_service
 from app.schemas.core_schemas.ingestion_schema import IngestDirectoryRequest
+from app.constants.app_constants import SUPPORTED_EXTENSIONS
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
+
+MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024  # 15 MB limit
+
+@router.post("/upload")
+async def upload_document_endpoint(file: UploadFile = File(...)):
+    """
+    Validates and ingests an uploaded file (.pdf, .docx, .txt, .md) into Qdrant.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Filename cannot be empty.")
+    
+    file_ext = Path(file.filename).suffix.lower()
+    if file_ext not in SUPPORTED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file format '{file_ext}'. Allowed formats: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
+        )
+    
+    content = await file.read()
+    if len(content) == 0:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty (0 bytes).")
+    
+    if len(content) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File exceeds maximum allowed size of {MAX_FILE_SIZE_BYTES // (1024*1024)}MB."
+        )
+
+    save_dir = Path("data/documents")
+    save_dir.mkdir(parents=True, exist_ok=True)
+    target_path = save_dir / file.filename
+
+    # Clear previous chunks for this document if re-uploading
+    ingestion_service.delete_document(file.filename)
+
+    with open(target_path, "wb") as f:
+        f.write(content)
+
+    try:
+        result = ingestion_service.ingest_document(str(target_path))
+        return {
+            "status": "success",
+            "filename": file.filename,
+            "chunks_indexed": result.get("chunks_indexed", 0),
+            "total_documents": result.get("total_documents", 0),
+            "message": f"Successfully indexed {result.get('chunks_indexed', 0)} chunks for '{file.filename}'."
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to process and index document: {str(e)}")
+
 
 @router.post("/ingest")
 def ingest_documents_endpoint(request: Optional[IngestDirectoryRequest] = None):

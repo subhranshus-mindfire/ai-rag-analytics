@@ -129,6 +129,67 @@ class TestDeepCoverage(unittest.TestCase):
         finally:
             Path(docx_path).unlink(missing_ok=True)
 
+    def test_ingestion_route_direct_coverage(self):
+        from unittest.mock import AsyncMock
+        from app.routes.core_routes.ingestion_route import (
+            upload_document_endpoint,
+            ingest_documents_endpoint,
+            list_documents_endpoint,
+            delete_document_endpoint,
+            MAX_FILE_SIZE_BYTES
+        )
+        from app.schemas.core_schemas.ingestion_schema import IngestDirectoryRequest
+        from fastapi import UploadFile, HTTPException
+
+        # 1. list_documents_endpoint
+        res_list = list_documents_endpoint()
+        self.assertIn("documents", res_list)
+
+        # 2. ingest_documents_endpoint
+        with patch("app.routes.core_routes.ingestion_route.ingestion_service.ingest_directory", return_value={"status": "success"}):
+            req = IngestDirectoryRequest(directory_path="data/documents")
+            res_ingest = ingest_documents_endpoint(req)
+            self.assertEqual(res_ingest["status"], "success")
+
+        # 3. delete_document_endpoint
+        with patch("app.routes.core_routes.ingestion_route.ingestion_service.delete_document", return_value={"status": "not_found"}):
+            with self.assertRaises(HTTPException):
+                delete_document_endpoint("missing.pdf")
+
+        with patch("app.routes.core_routes.ingestion_route.ingestion_service.delete_document", return_value={"status": "deleted"}):
+            del_ok = delete_document_endpoint("found.pdf")
+            self.assertEqual(del_ok["status"], "deleted")
+
+        # 4. upload_document_endpoint validation branches
+        mock_file_no_name = MagicMock(spec=UploadFile)
+        mock_file_no_name.filename = ""
+        with self.assertRaises(HTTPException):
+            asyncio.run(upload_document_endpoint(mock_file_no_name))
+
+        mock_file_bad_ext = MagicMock(spec=UploadFile)
+        mock_file_bad_ext.filename = "bad.exe"
+        with self.assertRaises(HTTPException):
+            asyncio.run(upload_document_endpoint(mock_file_bad_ext))
+
+        mock_file_empty = MagicMock(spec=UploadFile)
+        mock_file_empty.filename = "empty.txt"
+        mock_file_empty.read = AsyncMock(return_value=b"")
+        with self.assertRaises(HTTPException):
+            asyncio.run(upload_document_endpoint(mock_file_empty))
+
+        mock_file_big = MagicMock(spec=UploadFile)
+        mock_file_big.filename = "big.txt"
+        mock_file_big.read = AsyncMock(return_value=b"x" * (MAX_FILE_SIZE_BYTES + 10))
+        with self.assertRaises(HTTPException):
+            asyncio.run(upload_document_endpoint(mock_file_big))
+
+        mock_file_ok = MagicMock(spec=UploadFile)
+        mock_file_ok.filename = "good_policy.txt"
+        mock_file_ok.read = AsyncMock(return_value=b"Valid policy document text.")
+        with patch("app.routes.core_routes.ingestion_route.ingestion_service.ingest_document", return_value={"chunks_indexed": 3, "total_documents": 1}):
+            res_up = asyncio.run(upload_document_endpoint(mock_file_ok))
+            self.assertEqual(res_up["status"], "success")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -43,6 +43,23 @@ export const api = {
   },
 
   /**
+   * Upload and index a document with validation
+   */
+  async uploadDocument(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch('/documents/upload', {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Upload failed (${res.status})`);
+    }
+    return await res.json();
+  },
+
+  /**
    * Fetch system health
    */
   async getHealth() {
