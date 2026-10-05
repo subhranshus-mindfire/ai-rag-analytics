@@ -8,6 +8,7 @@ from unittest.mock import patch, MagicMock
 from app.agents.supervisor_agent import (
     classify_intent,
     route_decision,
+    general_node,
     session_memory_store,
     process_chat_message
 )
@@ -15,6 +16,18 @@ from app.agents.base_agent import AgentState
 
 
 class TestRouterAccuracyAndBranches(unittest.TestCase):
+
+    def test_general_node_responses(self):
+        # Greeting
+        state_greet: AgentState = {"question": "Hii"}
+        res = general_node(state_greet)
+        self.assertIn("enterprise GenAI Data Assistant", res["final_answer"])
+        self.assertEqual(res["sources"], [])
+
+        # Thanks
+        state_thanks: AgentState = {"question": "Thank you so much!"}
+        res_thanks = general_node(state_thanks)
+        self.assertIn("welcome", res_thanks["final_answer"].lower())
 
     def test_route_decision_function(self):
         # 1. SQL branch
@@ -25,7 +38,11 @@ class TestRouterAccuracyAndBranches(unittest.TestCase):
         state_comb: AgentState = {"intent": "combined"}
         self.assertEqual(route_decision(state_comb), "combined_agent")
 
-        # 3. RAG branch (default)
+        # 3. General / Greeting branch
+        state_gen: AgentState = {"intent": "general"}
+        self.assertEqual(route_decision(state_gen), "general_agent")
+
+        # 4. RAG branch (default)
         state_rag: AgentState = {"intent": "rag"}
         self.assertEqual(route_decision(state_rag), "rag_agent")
 
@@ -139,6 +156,43 @@ class TestRouterAccuracyAndBranches(unittest.TestCase):
             "sql_logs": None
         }
         self.assertEqual(classify_intent(state_comb)["intent"], "combined")
+
+        # Greeting / General heuristic tests
+        for greeting_q in ["Hii", "hello there", "good morning", "thanks", "who are you"]:
+            state_gen: AgentState = {
+                "session_id": "heuristics",
+                "messages": [],
+                "question": greeting_q,
+                "intent": None,
+                "rag_result": None,
+                "sql_result": None,
+                "final_answer": None,
+                "sources": [],
+                "sql_logs": None
+            }
+            self.assertEqual(classify_intent(state_gen)["intent"], "general", f"Failed for {greeting_q}")
+
+    @patch("app.agents.supervisor_agent.get_llm")
+    def test_general_intent_llm_classification(self, mock_get_llm):
+        mock_llm = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.content = "general"
+        mock_llm.invoke.return_value = mock_resp
+        mock_get_llm.return_value = mock_llm
+
+        state: AgentState = {
+            "session_id": "test_gen",
+            "messages": [],
+            "question": "Hi, how are you?",
+            "intent": None,
+            "rag_result": None,
+            "sql_result": None,
+            "final_answer": None,
+            "sources": [],
+            "sql_logs": None
+        }
+        res = classify_intent(state)
+        self.assertEqual(res["intent"], "general")
 
     @patch("app.agents.supervisor_agent.orchestration_graph.invoke")
     def test_multi_turn_session_memory(self, mock_invoke):
