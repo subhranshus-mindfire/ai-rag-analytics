@@ -206,6 +206,32 @@ body {
   flex-shrink: 0;
 }
 
+.doc-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.doc-btn-delete {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 4px;
+  border-radius: var(--radius-xs);
+  color: var(--text-dim);
+  opacity: 0.6;
+  transition: all 0.15s ease;
+}
+
+.doc-btn-delete:hover {
+  color: #f87171;
+  background-color: rgba(239, 68, 68, 0.15);
+  opacity: 1;
+}
+
 /* Example Prompts in Sidebar */
 .sample-queries {
   display: flex;

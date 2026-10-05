@@ -461,7 +461,7 @@ function Header({ health, onClearChat }) {
 // ==========================================
 // Sidebar Component
 // ==========================================
-function Sidebar({ documents, onSelectPrompt, onIngest, isIngesting, onUpload, isUploading }) {
+function Sidebar({ documents, onSelectPrompt, onIngest, isIngesting, onUpload, isUploading, onDeleteDocument }) {
   const samplePrompts = [
     "What is the company leave policy?",
     "Which are the top 5 customers by revenue?",
@@ -471,6 +471,30 @@ function Sidebar({ documents, onSelectPrompt, onIngest, isIngesting, onUpload, i
 
   const fileInputRef = useRef(null);
   const [feedback, setFeedback] = useState(null);
+
+  const handleDelete = async (docSource) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${docSource}" from the Knowledge Base?`
+    );
+    if (!confirmed) return;
+
+    try {
+      setFeedback({ type: "info", message: `Deleting "${docSource}"...` });
+      const res = await onDeleteDocument(docSource);
+      setFeedback({
+        type: "success",
+        message: res.message || `Deleted "${docSource}" successfully.`,
+      });
+      setTimeout(() => {
+        setFeedback((prev) => (prev?.type === "success" ? null : prev));
+      }, 4000);
+    } catch (err) {
+      setFeedback({
+        type: "error",
+        message: err.message || `Failed to delete "${docSource}".`,
+      });
+    }
+  };
 
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
@@ -637,7 +661,24 @@ function Sidebar({ documents, onSelectPrompt, onIngest, isIngesting, onUpload, i
                     h(IconDocument, { size: 13, className: "doc-icon" }),
                     h("span", { className: "doc-name", title: doc.source }, doc.source)
                   ),
-                  h("span", { className: "doc-tag" }, ext)
+                  h(
+                    "div",
+                    { className: "doc-actions" },
+                    h("span", { className: "doc-tag" }, ext),
+                    h(
+                      "button",
+                      {
+                        type: "button",
+                        className: "doc-btn-delete",
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          handleDelete(doc.source);
+                        },
+                        title: `Delete "${doc.source}"`,
+                      },
+                      h(IconTrash, { size: 12 })
+                    )
+                  )
                 );
               })
         )
@@ -906,6 +947,12 @@ export function App() {
     }
   };
 
+  const handleDeleteDocument = async (docId) => {
+    const res = await API.deleteDocument(docId);
+    await loadData();
+    return res;
+  };
+
   const handleClearChat = () => {
     setSessionId(`session_${Date.now()}`);
     setMessages([]);
@@ -921,6 +968,7 @@ export function App() {
       isIngesting,
       onUpload: handleUpload,
       isUploading,
+      onDeleteDocument: handleDeleteDocument,
     }),
     h(
       "main",

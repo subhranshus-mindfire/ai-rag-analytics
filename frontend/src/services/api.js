@@ -60,6 +60,20 @@ export const api = {
   },
 
   /**
+   * Delete document by filename/ID
+   */
+  async deleteDocument(documentId) {
+    const res = await fetch(`/documents/${encodeURIComponent(documentId)}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Failed to delete document (${res.status})`);
+    }
+    return await res.json();
+  },
+
+  /**
    * Fetch system health
    */
   async getHealth() {

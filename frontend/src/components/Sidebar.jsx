@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 
-export function Sidebar({ documents, onSelectPrompt, onIngest, isIngesting, onUpload, isUploading }) {
+export function Sidebar({ documents, onSelectPrompt, onIngest, isIngesting, onUpload, isUploading, onDeleteDocument }) {
   const samplePrompts = [
     "What is the company leave policy?",
     "Which are the top 5 customers by revenue?",
@@ -10,6 +10,30 @@ export function Sidebar({ documents, onSelectPrompt, onIngest, isIngesting, onUp
 
   const fileInputRef = useRef(null);
   const [feedback, setFeedback] = useState(null);
+
+  const handleDelete = async (docSource) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${docSource}" from the Knowledge Base?`
+    );
+    if (!confirmed) return;
+
+    try {
+      setFeedback({ type: 'info', message: `Deleting "${docSource}"...` });
+      const res = await onDeleteDocument(docSource);
+      setFeedback({
+        type: 'success',
+        message: res.message || `Deleted "${docSource}" successfully.`
+      });
+      setTimeout(() => {
+        setFeedback((prev) => (prev?.type === 'success' ? null : prev));
+      }, 4000);
+    } catch (err) {
+      setFeedback({
+        type: 'error',
+        message: err.message || `Failed to delete "${docSource}".`
+      });
+    }
+  };
 
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
@@ -169,7 +193,23 @@ export function Sidebar({ documents, onSelectPrompt, onIngest, isIngesting, onUp
                       </svg>
                       <span className="doc-name" title={doc.source}>{doc.source}</span>
                     </div>
-                    <span className="doc-tag">{ext}</span>
+                    <div className="doc-actions">
+                      <span className="doc-tag">{ext}</span>
+                      <button
+                        type="button"
+                        className="doc-btn-delete"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(doc.source);
+                        }}
+                        title={`Delete "${doc.source}"`}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        </svg>
+                      </button>
+                    </div>
                   </li>
                 );
               })

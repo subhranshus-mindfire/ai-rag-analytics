@@ -108,6 +108,12 @@ export function App() {
     setMessages([]);
   };
 
+  const handleDeleteDocument = async (docId) => {
+    const res = await api.deleteDocument(docId);
+    await loadInitialData();
+    return res;
+  };
+
   return (
     <div className="app-container">
       <Sidebar
@@ -117,6 +123,7 @@ export function App() {
         isIngesting={isIngesting}
         onUpload={handleUpload}
         isUploading={isUploading}
+        onDeleteDocument={handleDeleteDocument}
       />
 
       <main className="chat-area">

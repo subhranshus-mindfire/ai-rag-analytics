@@ -87,14 +87,26 @@ def list_documents_endpoint():
 @router.delete("/{document_id}")
 def delete_document_endpoint(document_id: str):
     """
-    Deletes all chunks associated with a specific document from Qdrant.
+    Deletes all chunks associated with a specific document from Qdrant and removes physical file from disk.
     """
     try:
+        # Check and remove physical file from data/documents/ if it exists
+        doc_path = Path("data/documents") / document_id
+        file_existed = doc_path.exists()
+        if file_existed:
+            doc_path.unlink(missing_ok=True)
+
         result = ingestion_service.delete_document(document_id)
-        if result["status"] == "not_found":
+        if result["status"] == "not_found" and not file_existed:
             raise HTTPException(status_code=404, detail=f"Document '{document_id}' not found in index.")
-        return result
+        return {
+            "status": "deleted",
+            "document_id": document_id,
+            "chunks_removed": result.get("chunks_removed", 0),
+            "message": f"Successfully deleted '{document_id}'."
+        }
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
