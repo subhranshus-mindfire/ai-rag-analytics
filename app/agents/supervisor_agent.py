@@ -10,24 +10,44 @@ from app.llms.llm_factory import get_llm
 session_memory_store: Dict[str, List[Dict[str, str]]] = {}
 
 def classify_intent(state: AgentState) -> Dict[str, Any]:
-    """Classifies user query into 'rag' (documents), 'sql' (database), or 'combined' (both)."""
+    """Classifies user query into 'general' (greetings/chitchat), 'rag' (documents), 'sql' (database), or 'combined' (both)."""
     question = state["question"]
     history = state.get("messages", [])
 
     history_text = "\n".join([f"{m['role']}: {m['content']}" for m in history[-4:]]) if history else "None"
 
+    # Fast-path for instant response on greetings / pleasantries to eliminate LLM latency
+    q_clean = re.sub(r"[^\w\s]", "", question.lower()).strip()
+    tokens = q_clean.split()
+    greeting_words = {"hi", "hii", "hello", "hey", "greetings", "howdy", "sup", "yo", "thanks", "thank you", "thx"}
+    if q_clean in greeting_words or (tokens and tokens[0] in {"hi", "hii", "hello", "hey"} and len(tokens) <= 4):
+        return {"intent": "general"}
+    if any(phrase in q_clean for phrase in ["good morning", "good afternoon", "good evening", "who are you", "what can you do", "help me"]):
+        return {"intent": "general"}
+
     prompt = (
         "You are an intelligent query router for an enterprise GenAI assistant.\n"
-        "Classify the user's inquiry into exactly one of three categories:\n"
+        "Classify the user's inquiry into exactly one of four categories:\n"
+        "- 'general': Greetings, small talk, pleasantries (e.g. 'hi', 'hello', 'hey', 'good morning', 'thanks'), or questions asking who you are or what you can do.\n"
         "- 'sql': Inquiries about numerical data, orders, revenue, customer accounts, sales figures, product stock, or database tables.\n"
         "- 'rag': Inquiries about company policies, leave/PTO, SLAs, security guidelines, onboarding, employee manuals, or documentation.\n"
         "- 'combined': Inquiries that explicitly ask for BOTH policy/documentation information AND numerical database/order metrics.\n\n"
         f"### Recent Conversation History:\n{history_text}\n\n"
         f"### User Question:\n{question}\n\n"
-        "Respond with ONLY one lowercase word: 'sql', 'rag', or 'combined'."
+        "Respond with ONLY one lowercase word: 'general', 'sql', 'rag', or 'combined'."
     )
 
     def _apply_heuristic(q: str) -> str:
+        q_clean = re.sub(r"[^\w\s]", "", q.lower()).strip()
+        tokens = q_clean.split()
+        greeting_words = {"hi", "hii", "hello", "hey", "greetings", "howdy", "sup", "yo", "thanks", "thank you", "thx"}
+        if q_clean in greeting_words or (tokens and tokens[0] in {"hi", "hii", "hello", "hey"} and len(tokens) <= 4):
+            return "general"
+        if any(phrase in q_clean for phrase in ["good morning", "good afternoon", "good evening"]):
+            return "general"
+        if any(phrase in q_clean for phrase in ["who are you", "what can you do", "help me"]):
+            return "general"
+
         sql_keywords = ["order", "revenue", "customer", "sale", "price", "count", "top", "sum", "avg", "spend"]
         doc_keywords = ["policy", "leave", "pto", "sla", "rule", "conduct", "handbook", "guideline", "security"]
         has_sql = any(k in q.lower() for k in sql_keywords)
@@ -46,7 +66,9 @@ def classify_intent(state: AgentState) -> Dict[str, Any]:
             text_resp = " ".join([p.get("text", "") for p in text_resp if isinstance(p, dict)])
         clean_intent = text_resp.strip().lower()
 
-        if "combined" in clean_intent:
+        if "general" in clean_intent:
+            intent = "general"
+        elif "combined" in clean_intent:
             intent = "combined"
         elif "sql" in clean_intent:
             intent = "sql"
@@ -121,10 +143,31 @@ def combined_node(state: AgentState) -> Dict[str, Any]:
     }
 
 
+def general_node(state: AgentState) -> Dict[str, Any]:
+    """Handles conversational greetings, pleasantries, and bot capabilities."""
+    question = state["question"].strip().lower()
+    if any(q in question for q in ["thank", "thx"]):
+        answer = "You're welcome! Let me know if you need anything else from our documents or database."
+    else:
+        answer = (
+            "Hello! I am your enterprise GenAI Data Assistant. I can help you with:\n"
+            "1. 📊 **Database Analytics (Text-to-SQL)**: Query customer data, revenue, orders, and sales figures.\n"
+            "2. 📄 **Document Search (RAG)**: Search company policies, employee handbook, PTO, security protocols, and SLAs.\n\n"
+            "How can I assist you today?"
+        )
+    return {
+        "final_answer": answer,
+        "sources": [],
+        "sql_logs": None
+    }
+
+
 def route_decision(state: AgentState) -> str:
     """Routing condition for conditional edge."""
     intent = state.get("intent", "rag")
-    if intent == "sql":
+    if intent == "general":
+        return "general_agent"
+    elif intent == "sql":
         return "sql_agent"
     elif intent == "combined":
         return "combined_agent"
@@ -135,6 +178,7 @@ def route_decision(state: AgentState) -> str:
 workflow = StateGraph(AgentState)
 
 workflow.add_node("classifier", classify_intent)
+workflow.add_node("general_agent", general_node)
 workflow.add_node("rag_agent", rag_node)
 workflow.add_node("sql_agent", sql_node)
 workflow.add_node("combined_agent", combined_node)
@@ -144,11 +188,13 @@ workflow.add_conditional_edges(
     "classifier",
     route_decision,
     {
+        "general_agent": "general_agent",
         "rag_agent": "rag_agent",
         "sql_agent": "sql_agent",
         "combined_agent": "combined_agent"
     }
 )
+workflow.add_edge("general_agent", END)
 workflow.add_edge("rag_agent", END)
 workflow.add_edge("sql_agent", END)
 workflow.add_edge("combined_agent", END)
