@@ -13,13 +13,15 @@ class DatabaseManager:
         self._init_connection()
 
     def _init_connection(self):
-        # 1. Attempt connection to PostgreSQL
+        # 1. Attempt connection using configured DATABASE_URL
         try:
-            pg_engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
-            with pg_engine.connect() as conn:
+            target_engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
+            with target_engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
-            self.engine = pg_engine
-            self.db_type = "postgresql"
+            self.engine = target_engine
+            self.db_type = target_engine.dialect.name
+            if self.db_type == "sqlite":
+                self._seed_sqlite_if_needed()
             return
         except Exception:
             pass
