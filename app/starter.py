@@ -47,15 +47,24 @@ def start_application() -> FastAPI:
     from fastapi.staticfiles import StaticFiles
     from fastapi.responses import FileResponse
 
+    frontend_dist = Path("frontend/dist")
     static_dir = Path("static")
+
+    if frontend_dist.exists():
+        assets_dir = frontend_dist / "assets"
+        if assets_dir.exists():
+            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+        app.mount("/frontend", StaticFiles(directory=str(frontend_dist)), name="frontend")
+
     if static_dir.exists():
         app.mount("/static", StaticFiles(directory="static"), name="static")
 
     @app.get("/")
     def serve_ui():
-        index_file = Path("static/index.html")
-        if index_file.exists():
-            return FileResponse(index_file)
+        if (frontend_dist / "index.html").exists():
+            return FileResponse(str(frontend_dist / "index.html"))
+        if (static_dir / "index.html").exists():
+            return FileResponse(str(static_dir / "index.html"))
         return {"message": "Frontend static/index.html not found"}
 
     @app.get("/ui")
