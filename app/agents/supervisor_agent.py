@@ -27,8 +27,19 @@ def classify_intent(state: AgentState) -> Dict[str, Any]:
         "Respond with ONLY one lowercase word: 'sql', 'rag', or 'combined'."
     )
 
-    llm = get_llm(temperature=0.0)
+    def _apply_heuristic(q: str) -> str:
+        sql_keywords = ["order", "revenue", "customer", "sale", "price", "count", "top", "sum", "avg", "spend"]
+        doc_keywords = ["policy", "leave", "pto", "sla", "rule", "conduct", "handbook", "guideline", "security"]
+        has_sql = any(k in q.lower() for k in sql_keywords)
+        has_doc = any(k in q.lower() for k in doc_keywords)
+        if has_sql and has_doc:
+            return "combined"
+        elif has_sql:
+            return "sql"
+        return "rag"
+
     try:
+        llm = get_llm(temperature=0.0)
         response = llm.invoke(prompt)
         text_resp = response.content if hasattr(response, "content") else str(response)
         if isinstance(text_resp, list):
@@ -42,19 +53,9 @@ def classify_intent(state: AgentState) -> Dict[str, Any]:
         elif "rag" in clean_intent:
             intent = "rag"
         else:
-            # Fallback heuristic
-            sql_keywords = ["order", "revenue", "customer", "sale", "price", "count", "top", "sum", "avg", "spend"]
-            doc_keywords = ["policy", "leave", "pto", "sla", "rule", "conduct", "handbook", "guideline", "security"]
-            has_sql = any(k in question.lower() for k in sql_keywords)
-            has_doc = any(k in question.lower() for k in doc_keywords)
-            if has_sql and has_doc:
-                intent = "combined"
-            elif has_sql:
-                intent = "sql"
-            else:
-                intent = "rag"
+            intent = _apply_heuristic(question)
     except Exception:
-        intent = "rag"
+        intent = _apply_heuristic(question)
 
     return {"intent": intent}
 
