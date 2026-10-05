@@ -47,7 +47,7 @@ class TestRAGPipeline(unittest.TestCase):
         vec = self.embeddings.embed_query("Sample search query")
         self.assertIsInstance(vec, list)
         self.assertTrue(len(vec) > 0)
-        self.assertTrue(all(isinstance(x, (float, int)) for x in vec))
+        self.assertTrue(all(isinstance(float(x), float) for x in vec))
 
     def test_vector_store_crud_lifecycle(self):
         texts = [
