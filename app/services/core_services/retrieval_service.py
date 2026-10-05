@@ -21,18 +21,37 @@ class RetrievalService:
         """Runs full RAG cycle: retrieves context, creates prompt, and calls LLM."""
         hits = self.retrieve(question, top_k=top_k)
 
-        if not hits:
-            context_text = "No relevant context found in the database."
-        else:
-            context_text = "\n\n---\n\n".join(
-                f"[Source: {hit['metadata'].get('source', 'Unknown')} - Score: {hit['score']:.2f}]\n{hit['content']}"
-                for hit in hits
+        # Filter out hits with low relevance (< 0.40 score threshold)
+        relevant_hits = [h for h in hits if h.get("score", 0) >= 0.40]
+
+        available_docs = [d.get("source") for d in self.vector_store.list_documents() if d.get("source")]
+        docs_summary = ", ".join(sorted(set(available_docs))[:5]) if available_docs else "company policies and guides"
+
+        if not relevant_hits:
+            friendly_fallback = (
+                f"I couldn't find any information about that in your currently uploaded documents.\n\n"
+                f"📁 **Indexed Knowledge Base:** {docs_summary}\n\n"
+                "💡 **Tip:** You can upload your document (e.g. `.pdf`, `.docx`, `.txt`, `.md`) using the **Upload Document** button in the sidebar, and I'll be happy to answer questions from it!"
             )
+            return {
+                "question": question,
+                "answer": friendly_fallback,
+                "sources": [],
+                "retrieved_chunks": [],
+                "provider": settings.LLM_PROVIDER
+            }
+
+        context_text = "\n\n---\n\n".join(
+            f"[Source: {hit['metadata'].get('source', 'Unknown')} - Score: {hit['score']:.2f}]\n{hit['content']}"
+            for hit in relevant_hits
+        )
 
         prompt = (
-            "You are a helpful, accurate enterprise AI assistant. "
-            "Answer the user's question strictly using the provided context below. "
-            "If the answer cannot be found in the context, explicitly state that the information is unavailable.\n\n"
+            "You are a helpful, accurate, and polite enterprise AI assistant.\n"
+            "Answer the user's question clearly and accurately using the provided context below.\n"
+            "If the answer cannot be found in the context, do NOT say 'The information is not available in the provided context'. "
+            f"Instead, politely explain that details on that specific topic were not found in the current documents ({docs_summary}), "
+            "and invite the user to upload the relevant file using the 'Upload Document' button in the sidebar.\n\n"
             f"### Context:\n{context_text}\n\n"
             f"### Question:\n{question}\n\n"
             "### Answer:"
@@ -51,8 +70,8 @@ class RetrievalService:
         return {
             "question": question,
             "answer": answer,
-            "sources": list({h["metadata"].get("source", "Unknown") for h in hits}),
-            "retrieved_chunks": hits,
+            "sources": list({h["metadata"].get("source", "Unknown") for h in relevant_hits}),
+            "retrieved_chunks": relevant_hits,
             "provider": settings.LLM_PROVIDER
         }
 
