@@ -44,27 +44,31 @@ def start_application() -> FastAPI:
     app.include_router(health_router)
     app.include_router(core_router)
 
+    import os
     from fastapi.staticfiles import StaticFiles
     from fastapi.responses import FileResponse
 
     frontend_dist = Path("frontend/dist")
     static_dir = Path("static")
 
-    if frontend_dist.exists():
-        assets_dir = frontend_dist / "assets"
-        if assets_dir.exists():
-            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
-        app.mount("/frontend", StaticFiles(directory=str(frontend_dist)), name="frontend")
+    if os.path.exists("frontend/dist/assets"):
+        app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")
+    elif os.path.exists("static/assets"):
+        app.mount("/assets", StaticFiles(directory="static/assets"), name="assets")
+
+    if os.path.exists("frontend/dist"):
+        app.mount("/frontend", StaticFiles(directory="frontend/dist"), name="frontend")
 
     if static_dir.exists():
         app.mount("/static", StaticFiles(directory="static"), name="static")
 
     @app.get("/")
     def serve_ui():
-        if (frontend_dist / "index.html").exists():
-            return FileResponse(str(frontend_dist / "index.html"))
-        if (static_dir / "index.html").exists():
-            return FileResponse(str(static_dir / "index.html"))
+        if os.path.isfile("frontend/dist/index.html"):
+            return FileResponse("frontend/dist/index.html")
+        index_file = Path("static/index.html")
+        if index_file.exists():
+            return FileResponse(str(index_file))
         return {"message": "Frontend static/index.html not found"}
 
     @app.get("/ui")

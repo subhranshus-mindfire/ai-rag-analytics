@@ -30,8 +30,9 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy application source code and seed assets
 COPY . .
 
-# Copy compiled React frontend into frontend/dist
+# Copy compiled React frontend into frontend/dist and static
 COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
+COPY --from=frontend-builder /app/frontend/dist /app/static
 
 # Expose FastAPI port
 EXPOSE 8000
