@@ -48,17 +48,17 @@ function EmptyState({ onSelectPrompt }) {
   );
 }
 
-export function ChatWindow({ messages, isProcessing, onSelectPrompt }) {
+export function ChatWindow({ messages, isProcessing, streamingMessage, onSelectPrompt }) {
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isProcessing]);
+  }, [messages, isProcessing, streamingMessage]);
 
   return (
     <section className="chat-messages">
       <div className="messages-inner">
-        {messages.length === 0 ? (
+        {messages.length === 0 && !streamingMessage ? (
           <EmptyState onSelectPrompt={onSelectPrompt} />
         ) : (
           messages.map((msg, index) => (
@@ -66,7 +66,11 @@ export function ChatWindow({ messages, isProcessing, onSelectPrompt }) {
           ))
         )}
 
-        {isProcessing && (
+        {streamingMessage && (
+          <MessageBubble message={streamingMessage} isLiveStreaming={true} />
+        )}
+
+        {isProcessing && !streamingMessage && (
           <div className="message-row assistant">
             <div className="avatar-badge assistant-avatar">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

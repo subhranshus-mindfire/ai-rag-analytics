@@ -2,6 +2,7 @@
 FastAPI REST API Endpoints Unit & Integration Tests.
 """
 import unittest
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 from app.main import app
 
@@ -74,6 +75,28 @@ class TestAPIEndpoints(unittest.TestCase):
         self.assertEqual(data["status"], "success")
         self.assertEqual(data["filename"], "test_upload_doc.txt")
         self.assertGreaterEqual(data["chunks_indexed"], 1)
+
+    def test_chat_stream_endpoint(self):
+        res = self.client.post("/chat/stream", json={"message": "hello", "session_id": "test_stream"})
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("text/event-stream", res.headers["content-type"])
+        body = res.text
+        self.assertIn("data: ", body)
+        self.assertIn('"type": "done"', body)
+
+    def test_chat_stream_endpoint_schema_validation(self):
+        res = self.client.post("/chat/stream", json={})
+        self.assertEqual(res.status_code, 422)
+
+    @patch("app.routes.core_routes.chat_route.process_chat_stream")
+    def test_chat_stream_endpoint_error_handling(self, mock_stream):
+        def error_gen(msg, sid):
+            raise RuntimeError("Streaming simulation error")
+            yield {}
+        mock_stream.side_effect = error_gen
+        res = self.client.post("/chat/stream", json={"message": "fail", "session_id": "test_err"})
+        self.assertEqual(res.status_code, 200)
+        self.assertIn('"type": "error"', res.text)
 
 
 if __name__ == "__main__":

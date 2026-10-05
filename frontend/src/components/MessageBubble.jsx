@@ -123,7 +123,7 @@ function SQLAccordion({ query, logs }) {
   );
 }
 
-export function MessageBubble({ message }) {
+export function MessageBubble({ message, isLiveStreaming = false }) {
   const isUser = message.role === 'user';
 
   if (isUser) {
@@ -147,6 +147,7 @@ export function MessageBubble({ message }) {
     rag: 'Document RAG',
     sql: 'SQL Analytics',
     combined: 'Hybrid RAG + SQL',
+    general: 'General Assistant',
     error: 'System Notice',
   };
 
@@ -160,19 +161,36 @@ export function MessageBubble({ message }) {
         </svg>
       </div>
       <div className="message-body">
-        {message.intent && (
-          <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          {message.intent && (
             <span className={`intent-pill ${intent}`}>
               {intentLabels[intent] || intent.toUpperCase()}
             </span>
-          </div>
-        )}
+          )}
+
+          {isLiveStreaming && message.status && (
+            <span className="status-pill">
+              <span className="status-spinner" />
+              {message.status}
+            </span>
+          )}
+        </div>
 
         <div className="assistant-bubble">
-          <div
-            className="markdown-body"
-            dangerouslySetInnerHTML={{ __html: formattedHtml }}
-          />
+          {message.content ? (
+            <div className="markdown-body">
+              <div dangerouslySetInnerHTML={{ __html: formattedHtml }} />
+              {isLiveStreaming && <span className="streaming-cursor" />}
+            </div>
+          ) : (
+            isLiveStreaming && (
+              <div className="streaming-loading-box">
+                <div className="typing-dot" />
+                <div className="typing-dot" />
+                <div className="typing-dot" />
+              </div>
+            )
+          )}
 
           {message.sql_query && (
             <SQLAccordion query={message.sql_query} logs={message.sql_logs} />

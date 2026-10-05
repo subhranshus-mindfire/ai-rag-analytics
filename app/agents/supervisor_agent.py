@@ -247,3 +247,182 @@ def process_chat_message(message: str, session_id: str = "default") -> Dict[str,
         "sql_query": final_state.get("sql_result", {}).get("sql_query") if final_state.get("sql_result") else None,
         "sql_logs": final_state.get("sql_logs")
     }
+
+
+def process_chat_stream(message: str, session_id: str = "default"):
+    """
+    High-level conversation coordinator yielding real-time events and token chunks.
+    Yields events:
+      - {"type": "status", "step": "..."}
+      - {"type": "intent", "intent": "..."}
+      - {"type": "sources", "sources": [...]}
+      - {"type": "sql_query", "query": "...", "logs": {...}}
+      - {"type": "token", "content": "..."}
+      - {"type": "done", "session_id": "...", "final_answer": "...", ...}
+    """
+    if session_id not in session_memory_store:
+        session_memory_store[session_id] = []
+
+    history = session_memory_store[session_id]
+
+    yield {"type": "status", "step": "Analyzing query intent..."}
+
+    initial_state: AgentState = {
+        "session_id": session_id,
+        "messages": history,
+        "question": message,
+        "intent": None,
+        "rag_result": None,
+        "sql_result": None,
+        "final_answer": None,
+        "sources": [],
+        "sql_logs": None
+    }
+
+    # 1. Classify intent
+    class_res = classify_intent(initial_state)
+    intent = class_res["intent"]
+    yield {"type": "intent", "intent": intent}
+
+    full_tokens = []
+    sources = []
+    sql_query = None
+    sql_logs = None
+
+    if intent == "general":
+        yield {"type": "status", "step": "Generating response..."}
+        gen_res = general_node(initial_state)
+        final_answer = gen_res["final_answer"]
+        words = final_answer.split(" ")
+        for i, w in enumerate(words):
+            token = w + (" " if i < len(words) - 1 else "")
+            full_tokens.append(token)
+            yield {"type": "token", "content": token}
+
+    elif intent == "rag":
+        yield {"type": "status", "step": "Searching knowledge base in vector database..."}
+        hits = retrieval_service.retrieve(message, top_k=3)
+        relevant_hits = [h for h in hits if h.get("score", 0) >= 0.40]
+
+        if not relevant_hits:
+            yield {"type": "status", "step": "No matching documents found, providing guidance..."}
+            fallback_res = retrieval_service.ask(message)
+            final_answer = fallback_res["answer"]
+            words = final_answer.split(" ")
+            for i, w in enumerate(words):
+                token = w + (" " if i < len(words) - 1 else "")
+                full_tokens.append(token)
+                yield {"type": "token", "content": token}
+        else:
+            sources = list({h["metadata"].get("source", "Unknown") for h in relevant_hits})
+            yield {"type": "sources", "sources": sources}
+            yield {"type": "status", "step": f"Found {len(relevant_hits)} relevant document chunk(s). Synthesizing answer..."}
+
+            available_docs = [d.get("source") for d in retrieval_service.vector_store.list_documents() if d.get("source")]
+            docs_summary = ", ".join(sorted(set(available_docs))[:5]) if available_docs else "company policies and guides"
+
+            context_text = "\n\n---\n\n".join(
+                f"[Source: {hit['metadata'].get('source', 'Unknown')} - Score: {hit['score']:.2f}]\n{hit['content']}"
+                for hit in relevant_hits
+            )
+            prompt = (
+                "You are a helpful, accurate, and polite enterprise AI assistant.\n"
+                "Answer the user's question clearly and accurately using the provided context below.\n"
+                "If the answer cannot be found in the context, do NOT say 'The information is not available in the provided context'. "
+                f"Instead, politely explain that details on that specific topic were not found in the current documents ({docs_summary}), "
+                "and invite the user to upload the relevant file using the 'Upload Document' button in the sidebar.\n\n"
+                f"### Context:\n{context_text}\n\n"
+                f"### Question:\n{message}\n\n"
+                "### Answer:"
+            )
+
+            llm = get_llm(temperature=0.2)
+            try:
+                for chunk in llm.stream(prompt):
+                    content = chunk.content if hasattr(chunk, "content") else str(chunk)
+                    if isinstance(content, list):
+                        content = " ".join([p.get("text", "") for p in content if isinstance(p, dict)])
+                    if content:
+                        full_tokens.append(content)
+                        yield {"type": "token", "content": content}
+            except Exception:
+                resp = llm.invoke(prompt)
+                content = resp.content if hasattr(resp, "content") else str(resp)
+                full_tokens.append(str(content))
+                yield {"type": "token", "content": str(content)}
+
+    elif intent == "sql":
+        yield {"type": "status", "step": "Inspecting database schema..."}
+        yield {"type": "status", "step": "Generating and validating SQL query..."}
+        sql_res = sql_agent.answer_question(message)
+        sql_query = sql_res.get("sql_query")
+        sql_logs = sql_res.get("logs")
+
+        if sql_query:
+            yield {"type": "sql_query", "query": sql_query, "logs": sql_logs}
+
+        yield {"type": "status", "step": "Formatting database insights..."}
+        answer = sql_res.get("answer", "")
+        words = answer.split(" ")
+        for i, w in enumerate(words):
+            token = w + (" " if i < len(words) - 1 else "")
+            full_tokens.append(token)
+            yield {"type": "token", "content": token}
+
+    elif intent == "combined":
+        yield {"type": "status", "step": "Querying both document knowledge base and database..."}
+        rag_res = retrieval_service.ask(message)
+        sql_res = sql_agent.answer_question(message)
+
+        sources = rag_res.get("sources", [])
+        if sources:
+            yield {"type": "sources", "sources": sources}
+
+        sql_query = sql_res.get("sql_query")
+        sql_logs = sql_res.get("logs")
+        if sql_query:
+            yield {"type": "sql_query", "query": sql_query, "logs": sql_logs}
+
+        yield {"type": "status", "step": "Synthesizing unified response with AI..."}
+
+        synthesis_prompt = (
+            "You are an enterprise AI data assistant. Synthesize a single comprehensive, "
+            "coherent response answering all parts of the user's question by combining the document context "
+            "and database results below.\n\n"
+            f"### User Question:\n{message}\n\n"
+            f"### Document Findings:\n{rag_res.get('answer', 'N/A')}\n\n"
+            f"### Database Analytics:\n{sql_res.get('answer', 'N/A')}\n\n"
+            f"Executed SQL: {sql_res.get('sql_query', 'N/A')}\n\n"
+            "### Final Combined Answer:"
+        )
+
+        llm = get_llm(temperature=0.2)
+        try:
+            for chunk in llm.stream(synthesis_prompt):
+                content = chunk.content if hasattr(chunk, "content") else str(chunk)
+                if isinstance(content, list):
+                    content = " ".join([p.get("text", "") for p in content if isinstance(p, dict)])
+                if content:
+                    full_tokens.append(content)
+                    yield {"type": "token", "content": content}
+        except Exception:
+            resp = llm.invoke(synthesis_prompt)
+            content = resp.content if hasattr(resp, "content") else str(resp)
+            full_tokens.append(str(content))
+            yield {"type": "token", "content": str(content)}
+
+    final_answer_str = "".join(full_tokens).strip()
+
+    # Save to session memory
+    session_memory_store[session_id].append({"role": "user", "content": message})
+    session_memory_store[session_id].append({"role": "assistant", "content": final_answer_str})
+
+    yield {
+        "type": "done",
+        "session_id": session_id,
+        "intent": intent,
+        "final_answer": final_answer_str,
+        "sources": sources,
+        "sql_query": sql_query,
+        "sql_logs": sql_logs
+    }
