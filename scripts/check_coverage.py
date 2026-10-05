@@ -105,6 +105,17 @@ def main():
     print(f"{'TOTAL':<44} {total_executable:>7} {total_missed:>7} {overall_pct:>7.1f}%")
     print("=" * 68)
 
+    if result.failures or result.errors:
+        print(f"❌ Test suite failed with {len(result.failures)} failures and {len(result.errors)} errors.")
+        sys.exit(1)
+
+    if overall_pct < 80.0:
+        print(f"❌ Coverage {overall_pct:.1f}% is below required 80.0% threshold!")
+        sys.exit(1)
+
+    print(f"✅ All tests passed and coverage gate satisfied ({overall_pct:.1f}% >= 80.0%).")
+    sys.exit(0)
+
 
 if __name__ == "__main__":
     main()
