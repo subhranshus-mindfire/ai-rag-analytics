@@ -69,7 +69,21 @@ class TestServicesCoverage(unittest.TestCase):
 
         with patch.object(self.retrieval, "retrieve", return_value=[]):
             res = self.retrieval.ask("Unknown policy")
-            self.assertEqual(res["answer"], "Information unavailable.")
+            self.assertIn("couldn't find", res["answer"].lower())
+            self.assertEqual(res["sources"], [])
+            self.assertEqual(res["retrieved_chunks"], [])
+
+    @patch("app.services.core_services.retrieval_service.get_llm")
+    def test_retrieval_service_ask_low_relevance_hits(self, mock_get_llm):
+        # Hits exist but are below 0.40 relevance threshold
+        low_score_hits = [
+            {"content": "Irrelevant SLA content", "score": 0.21, "metadata": {"source": "customer_support_sla.txt"}}
+        ]
+        with patch.object(self.retrieval, "retrieve", return_value=low_score_hits):
+            res = self.retrieval.ask("Tell me something about the Azure assignment")
+            self.assertIn("couldn't find any information", res["answer"])
+            self.assertEqual(res["sources"], [])
+            self.assertEqual(res["retrieved_chunks"], [])
 
     def test_clean_content_formatting(self):
         # 1. String
