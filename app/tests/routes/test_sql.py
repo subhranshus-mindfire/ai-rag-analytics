@@ -1,8 +1,10 @@
 """Tests for SQL Agent and Validation."""
 import unittest
+from unittest.mock import patch
 from app.tools.retriever_tool import sql_validator, SecurityValidationError
 from app.utils.core_utils.db_utils import db_manager
 from app.agents.retriever_agent import sql_agent
+
 
 class TestSQLAgent(unittest.TestCase):
 
@@ -32,12 +34,19 @@ class TestSQLAgent(unittest.TestCase):
         self.assertIn("orders", schema.lower())
         self.assertIn("products", schema.lower())
 
-    def test_sql_agent_query_execution(self):
+    @patch("app.agents.retriever_agent.get_llm")
+    @patch.object(sql_agent, "generate_sql", return_value="SELECT COUNT(*) AS total FROM products;")
+    def test_sql_agent_query_execution(self, mock_generate, mock_llm):
+        mock_resp = unittest.mock.MagicMock()
+        mock_resp.content = "There are currently 10 products in the catalog."
+        mock_llm.return_value.invoke.return_value = mock_resp
+
         res = sql_agent.answer_question("How many products are in the catalog?")
         self.assertIn("rows", res)
         self.assertIn("sql_query", res)
         self.assertTrue(len(res["rows"]) > 0)
         self.assertIn("latency_ms", res["logs"])
+
 
 if __name__ == "__main__":
     unittest.main()
