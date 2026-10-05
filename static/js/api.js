@@ -55,6 +55,40 @@ export const API = {
   },
 
   /**
+   * Upload and index a document with backend validation
+   */
+  async uploadDocument(file) {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch("/documents/upload", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || `Upload failed (${response.status})`);
+    }
+    return await response.json();
+  },
+
+  /**
+   * Delete document by filename/ID
+   */
+  async deleteDocument(documentId) {
+    const response = await fetch(`/documents/${encodeURIComponent(documentId)}`, {
+      method: "DELETE",
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || `Delete failed (${response.status})`);
+    }
+    return await response.json();
+  },
+
+  /**
    * Fetch diagnostic system health
    */
   async getHealth() {

@@ -206,6 +206,32 @@ body {
   flex-shrink: 0;
 }
 
+.doc-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.doc-btn-delete {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 4px;
+  border-radius: var(--radius-xs);
+  color: var(--text-dim);
+  opacity: 0.6;
+  transition: all 0.15s ease;
+}
+
+.doc-btn-delete:hover {
+  color: #f87171;
+  background-color: rgba(239, 68, 68, 0.15);
+  opacity: 1;
+}
+
 /* Example Prompts in Sidebar */
 .sample-queries {
   display: flex;
@@ -928,6 +954,100 @@ body {
 .input-hint {
   font-size: 11px;
   color: var(--text-dim);
+}
+
+/* Document Upload UI & Client Validations */
+.btn-upload {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.14), rgba(139, 92, 246, 0.14));
+  border: 1px dashed rgba(59, 130, 246, 0.4);
+  border-radius: var(--radius-sm);
+  color: #93c5fd;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-bottom: 10px;
+  outline: none;
+}
+
+.btn-upload:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.28), rgba(139, 92, 246, 0.28));
+  border-color: #60a5fa;
+  color: #ffffff;
+  box-shadow: 0 2px 10px rgba(59, 130, 246, 0.25);
+  transform: translateY(-1px);
+}
+
+.btn-upload:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-upload:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  border-color: var(--border-subtle);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-dim);
+}
+
+.btn-upload svg {
+  flex-shrink: 0;
+  stroke: currentColor;
+}
+
+.upload-feedback {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  line-height: 1.4;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  animation: fadeIn 0.2s ease;
+  box-sizing: border-box;
+}
+
+.upload-feedback-error {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+}
+
+.upload-feedback-success {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #6ee7b7;
+}
+
+.upload-feedback-info {
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  color: #93c5fd;
+}
+
+.upload-feedback-close {
+  all: unset;
+  cursor: pointer;
+  padding: 0 4px;
+  font-size: 13px;
+  line-height: 1;
+  color: inherit;
+  opacity: 0.7;
+}
+
+.upload-feedback-close:hover {
+  opacity: 1;
 }
 
 /* Responsive adjustments */
