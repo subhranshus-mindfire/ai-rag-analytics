@@ -18,11 +18,12 @@ class QdrantStore:
             url = settings.QDRANT_URL
 
             if url.startswith("http://") or url.startswith("https://"):
-                self.client = QdrantClient(url=url)
+                api_key = settings.QDRANT_API_KEY if settings.QDRANT_API_KEY else None
+                self.client = QdrantClient(url=url, api_key=api_key, check_compatibility=False)
             elif url == ":memory:":
-                self.client = QdrantClient(location=":memory:")
+                self.client = QdrantClient(location=":memory:", check_compatibility=False)
             else:
-                self.client = QdrantClient(path=url)
+                self.client = QdrantClient(path=url, check_compatibility=False)
 
         except Exception as e:
             # Graceful fallback to lightweight memory store

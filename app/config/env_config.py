@@ -26,6 +26,7 @@ class Settings:
     # Embeddings & Qdrant
     EMBEDDING_MODEL_NAME: str = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-small-en-v1.5")
     QDRANT_URL: str = os.getenv("QDRANT_URL", "./qdrant_data")
+    QDRANT_API_KEY: str = os.getenv("QDRANT_API_KEY", "")
     QDRANT_COLLECTION_NAME: str = os.getenv("QDRANT_COLLECTION_NAME", "documents")
 
     # PostgreSQL

@@ -56,6 +56,29 @@ class TestFileUtilsCoverage(unittest.TestCase):
             self.assertNotIn("ignored.exe", filenames)
             self.assertNotIn(".hidden.txt", filenames)
 
+    def test_load_docx_and_other_formats(self):
+        # 1. Test docx parsing
+        docx_path = Path("data/documents/employee_onboarding_guide.docx")
+        if docx_path.exists():
+            text = self.loader.load_file(str(docx_path))
+            self.assertTrue(len(text) > 0)
+
+        # 2. Test csv and unknown extension fallback
+        with tempfile.NamedTemporaryFile("w+", suffix=".csv", delete=False) as f:
+            f.write("col1,col2\nval1,val2")
+            csv_path = f.name
+
+        with tempfile.NamedTemporaryFile("w+", suffix=".custom", delete=False) as f:
+            f.write("custom content")
+            custom_path = f.name
+
+        try:
+            self.assertIn("val1", self.loader.load_file(csv_path))
+            self.assertIn("custom content", self.loader.load_file(custom_path))
+        finally:
+            Path(csv_path).unlink(missing_ok=True)
+            Path(custom_path).unlink(missing_ok=True)
+
 
 if __name__ == "__main__":
     unittest.main()
