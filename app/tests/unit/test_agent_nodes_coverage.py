@@ -3,7 +3,7 @@ Unit tests covering LangGraph nodes and SQL Agent error retries.
 """
 import unittest
 from unittest.mock import patch, MagicMock
-from app.agents.supervisor_agent import rag_node, sql_node, combined_node
+from app.agents.supervisor_agent import rag_node, sql_node, combined_node, process_chat_stream
 from app.agents.retriever_agent import SQLAgent
 from app.agents.base_agent import AgentState
 
@@ -63,6 +63,80 @@ class TestAgentNodesCoverage(unittest.TestCase):
         self.assertIn("rows", res)
         self.assertIn("log", res)
         self.assertIn("latency_ms", res["log"])
+
+    def test_process_chat_stream_general(self):
+        events = list(process_chat_stream("hi", session_id="stream_gen"))
+        types = [e["type"] for e in events]
+        self.assertIn("status", types)
+        self.assertIn("intent", types)
+        self.assertIn("token", types)
+        self.assertIn("done", types)
+        done_event = [e for e in events if e["type"] == "done"][0]
+        self.assertEqual(done_event["intent"], "general")
+
+    @patch("app.agents.supervisor_agent.retrieval_service.retrieve")
+    @patch("app.agents.supervisor_agent.get_llm")
+    def test_process_chat_stream_rag(self, mock_get_llm, mock_retrieve):
+        mock_retrieve.return_value = [
+            {"content": "Policy text", "score": 0.85, "metadata": {"source": "policy.txt"}}
+        ]
+        mock_llm = MagicMock()
+        class DummyChunk:
+            content = "Policy answer streamed."
+        mock_llm.stream.return_value = [DummyChunk()]
+        mock_get_llm.return_value = mock_llm
+
+        events = list(process_chat_stream("What is the policy?", session_id="stream_rag"))
+        types = [e["type"] for e in events]
+        self.assertIn("sources", types)
+        self.assertIn("token", types)
+        self.assertIn("done", types)
+        done_event = [e for e in events if e["type"] == "done"][0]
+        self.assertEqual(done_event["intent"], "rag")
+
+    @patch("app.agents.supervisor_agent.sql_agent.answer_question")
+    def test_process_chat_stream_sql(self, mock_answer):
+        mock_answer.return_value = {
+            "answer": "100 orders found.",
+            "sql_query": "SELECT COUNT(*) FROM orders;",
+            "logs": {"latency_ms": 10}
+        }
+        events = list(process_chat_stream("How many orders were placed?", session_id="stream_sql"))
+        types = [e["type"] for e in events]
+        self.assertIn("sql_query", types)
+        self.assertIn("token", types)
+        self.assertIn("done", types)
+        done_event = [e for e in events if e["type"] == "done"][0]
+        self.assertEqual(done_event["intent"], "sql")
+
+    @patch("app.agents.supervisor_agent.retrieval_service.retrieve")
+    @patch("app.agents.supervisor_agent.retrieval_service.ask")
+    def test_process_chat_stream_rag_no_hits(self, mock_ask, mock_retrieve):
+        mock_retrieve.return_value = []
+        mock_ask.return_value = {"answer": "Friendly fallback message."}
+        events = list(process_chat_stream("tell me about xyz policy", session_id="stream_nohits"))
+        types = [e["type"] for e in events]
+        self.assertIn("token", types)
+        self.assertIn("done", types)
+
+    @patch("app.agents.supervisor_agent.retrieval_service.ask")
+    @patch("app.agents.supervisor_agent.sql_agent.answer_question")
+    @patch("app.agents.supervisor_agent.get_llm")
+    def test_process_chat_stream_combined(self, mock_get_llm, mock_sql, mock_ask):
+        mock_ask.return_value = {"answer": "Refund policy", "sources": ["ref.txt"]}
+        mock_sql.return_value = {"answer": "10 refunds", "sql_query": "SELECT 1;", "logs": {}}
+        mock_llm = MagicMock()
+        class DummyChunk:
+            content = "Combined streaming response."
+        mock_llm.stream.return_value = [DummyChunk()]
+        mock_get_llm.return_value = mock_llm
+
+        events = list(process_chat_stream("What is the refund policy and count of refunds?", session_id="stream_comb"))
+        types = [e["type"] for e in events]
+        self.assertIn("sources", types)
+        self.assertIn("sql_query", types)
+        self.assertIn("token", types)
+        self.assertIn("done", types)
 
 
 if __name__ == "__main__":

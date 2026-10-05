@@ -16,6 +16,7 @@ export function App() {
   const [health, setHealth] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isIngesting, setIsIngesting] = useState(false);
+  const [streamingMessage, setStreamingMessage] = useState(null);
 
   useEffect(() => {
     localStorage.setItem('genai_react_session_id', sessionId);
@@ -47,17 +48,67 @@ export function App() {
     setInput('');
     setIsProcessing(true);
 
+    const activeStream = {
+      role: 'assistant',
+      content: '',
+      status: 'Analyzing query intent...',
+      intent: null,
+      sources: [],
+      sql_query: null,
+      sql_logs: null,
+      isStreaming: true,
+    };
+    setStreamingMessage({ ...activeStream });
+
     try {
-      const res = await api.sendMessage(trimmed, sessionId);
-      const assistantMessage = {
-        role: 'assistant',
-        content: res.answer,
-        intent: res.intent,
-        sources: res.sources,
-        sql_query: res.sql_query,
-        sql_logs: res.sql_logs,
-      };
-      setMessages((prev) => [...prev, assistantMessage]);
+      await api.sendMessageStream(trimmed, sessionId, {
+        onStatus: (step) => {
+          activeStream.status = step;
+          setStreamingMessage({ ...activeStream });
+        },
+        onIntent: (intent) => {
+          activeStream.intent = intent;
+          setStreamingMessage({ ...activeStream });
+        },
+        onSources: (sources) => {
+          activeStream.sources = sources;
+          setStreamingMessage({ ...activeStream });
+        },
+        onSqlQuery: (query, logs) => {
+          activeStream.sql_query = query;
+          activeStream.sql_logs = logs;
+          setStreamingMessage({ ...activeStream });
+        },
+        onToken: (token) => {
+          activeStream.content += token;
+          setStreamingMessage({ ...activeStream });
+        },
+        onDone: (event) => {
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: 'assistant',
+              content: event.final_answer || activeStream.content,
+              intent: event.intent || activeStream.intent,
+              sources: event.sources || activeStream.sources || [],
+              sql_query: event.sql_query || activeStream.sql_query,
+              sql_logs: event.sql_logs || activeStream.sql_logs,
+            },
+          ]);
+          setStreamingMessage(null);
+        },
+        onError: (errMessage) => {
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: 'assistant',
+              content: `⚠️ Error: ${errMessage}`,
+              intent: 'error',
+            },
+          ]);
+          setStreamingMessage(null);
+        },
+      });
     } catch (err) {
       setMessages((prev) => [
         ...prev,
@@ -67,8 +118,10 @@ export function App() {
           intent: 'error',
         },
       ]);
+      setStreamingMessage(null);
     } finally {
       setIsProcessing(false);
+      setStreamingMessage(null);
     }
   };
 
@@ -131,6 +184,7 @@ export function App() {
         <ChatWindow
           messages={messages}
           isProcessing={isProcessing}
+          streamingMessage={streamingMessage}
           onSelectPrompt={handleSelectPrompt}
         />
         <ChatInput

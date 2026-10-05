@@ -21,6 +21,61 @@ export const api = {
   },
 
   /**
+   * Stream chat prompt with live agent events & tokens via /chat/stream
+   */
+  async sendMessageStream(message, sessionId = 'default', callbacks = {}) {
+    const res = await fetch('/chat/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, session_id: sessionId }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Server error (${res.status})`);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop(); // Keep unparsed trailing data
+
+      for (const part of parts) {
+        const line = part.trim();
+        if (!line.startsWith('data: ')) continue;
+        const payload = line.slice(6);
+        try {
+          const event = JSON.parse(payload);
+          if (event.type === 'status' && callbacks.onStatus) {
+            callbacks.onStatus(event.step);
+          } else if (event.type === 'intent' && callbacks.onIntent) {
+            callbacks.onIntent(event.intent);
+          } else if (event.type === 'token' && callbacks.onToken) {
+            callbacks.onToken(event.content);
+          } else if (event.type === 'sources' && callbacks.onSources) {
+            callbacks.onSources(event.sources);
+          } else if (event.type === 'sql_query' && callbacks.onSqlQuery) {
+            callbacks.onSqlQuery(event.query, event.logs);
+          } else if (event.type === 'done' && callbacks.onDone) {
+            callbacks.onDone(event);
+          } else if (event.type === 'error' && callbacks.onError) {
+            callbacks.onError(event.message);
+          }
+        } catch (e) {
+          console.error('Failed to parse SSE event:', e);
+        }
+      }
+    }
+  },
+
+  /**
    * Fetch indexed documents list
    */
   async getDocuments() {

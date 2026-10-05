@@ -595,6 +595,70 @@ body {
   color: #f87171;
 }
 
+.intent-pill.general {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #fbbf24;
+}
+
+/* Live Event Streaming Status Pill & Spinner */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #38bdf8;
+  background: rgba(14, 165, 233, 0.1);
+  border: 1px solid rgba(14, 165, 233, 0.28);
+  border-radius: var(--radius-full);
+  padding: 3px 10px;
+  margin-bottom: 8px;
+  animation: pulse-border 2s infinite ease-in-out;
+}
+
+.status-spinner {
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(56, 189, 248, 0.3);
+  border-top-color: #38bdf8;
+  border-radius: 50%;
+  animation: spin-status 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin-status {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse-border {
+  0%, 100% { border-color: rgba(14, 165, 233, 0.28); }
+  50% { border-color: rgba(14, 165, 233, 0.65); }
+}
+
+.streaming-cursor {
+  display: inline-block;
+  width: 6px;
+  height: 15px;
+  background-color: #38bdf8;
+  margin-left: 3px;
+  vertical-align: -2px;
+  border-radius: 1px;
+  animation: blink-cursor 0.75s infinite;
+}
+
+@keyframes blink-cursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.streaming-loading-box {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+}
+
 /* Markdown Content Formatting */
 .markdown-body {
   color: #e2e8f0;

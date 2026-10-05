@@ -106,4 +106,14 @@ def _create_dummy_llm(message: str):
                         f"Note: {message}"
                     )
                 return DummyResponse()
+
+            def stream(self, prompt: str):
+                resp = self.invoke(prompt)
+                words = resp.content.split(" ")
+                for i, w in enumerate(words):
+                    part = w + (" " if i < len(words) - 1 else "")
+                    class DummyChunk:
+                        content = part
+                    yield DummyChunk()
+
         return LocalDummyLLM()
