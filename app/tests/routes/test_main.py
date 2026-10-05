@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 def test_get_health(client):
     response = client.get("/health")
     assert response.status_code == 200
@@ -24,7 +26,16 @@ def test_documents_lifecycle(client):
     assert del_res.status_code == 200
     assert del_res.json()["status"] == "deleted"
 
-def test_chat_sql_intent(client):
+@patch("app.routes.core_routes.chat_route.process_chat_message")
+def test_chat_sql_intent(mock_process, client):
+    mock_process.return_value = {
+        "session_id": "test_session_sql",
+        "intent": "sql",
+        "answer": "Top 5 customers by revenue are Acme, Global, etc.",
+        "sources": [],
+        "sql_query": "SELECT name FROM customers ORDER BY revenue DESC LIMIT 5",
+        "sql_logs": {"latency_ms": 12.5}
+    }
     response = client.post("/chat", json={
         "message": "Which are the top 5 customers by revenue?",
         "session_id": "test_session_sql"
@@ -35,7 +46,16 @@ def test_chat_sql_intent(client):
     assert data["sql_query"] is not None
     assert len(data["answer"]) > 0
 
-def test_chat_rag_intent(client):
+@patch("app.routes.core_routes.chat_route.process_chat_message")
+def test_chat_rag_intent(mock_process, client):
+    mock_process.return_value = {
+        "session_id": "test_session_rag",
+        "intent": "rag",
+        "answer": "Company provides 20 days of annual leave.",
+        "sources": ["company_policies.txt"],
+        "sql_query": None,
+        "sql_logs": None
+    }
     response = client.post("/chat", json={
         "message": "What is the company leave policy?",
         "session_id": "test_session_rag"

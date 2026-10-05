@@ -10,51 +10,81 @@ from app.llms.llm_factory import get_llm
 session_memory_store: Dict[str, List[Dict[str, str]]] = {}
 
 def classify_intent(state: AgentState) -> Dict[str, Any]:
-    """Classifies user query into 'rag' (documents), 'sql' (database), or 'combined' (both)."""
+    """Classifies user query into 'general' (greetings/chitchat), 'rag' (documents), 'sql' (database), or 'combined' (both)."""
     question = state["question"]
     history = state.get("messages", [])
 
     history_text = "\n".join([f"{m['role']}: {m['content']}" for m in history[-4:]]) if history else "None"
 
+    # Fast-path for instant response on greetings, dismissals, and acknowledgments
+    q_clean = re.sub(r"[^\w\s]", "", question.lower()).strip()
+    tokens = q_clean.split()
+    conversational_phrases = {
+        "hi", "hii", "hello", "hey", "greetings", "howdy", "sup", "yo",
+        "thanks", "thank you", "thx", "ok", "okay", "got it", "understood", "alright", "cool",
+        "leave it", "leave that", "never mind", "nevermind", "forget it", "drop it", "cancel", "no worries"
+    }
+    if q_clean in conversational_phrases or (tokens and tokens[0] in {"hi", "hii", "hello", "hey"} and len(tokens) <= 4):
+        return {"intent": "general"}
+    if any(phrase in q_clean for phrase in [
+        "leave it", "never mind", "nevermind", "forget it", "drop it",
+        "good morning", "good afternoon", "good evening", "who are you", "what can you do", "help me"
+    ]):
+        return {"intent": "general"}
+
     prompt = (
         "You are an intelligent query router for an enterprise GenAI assistant.\n"
-        "Classify the user's inquiry into exactly one of three categories:\n"
+        "Classify the user's inquiry into exactly one of four categories:\n"
+        "- 'general': Greetings, small talk, dismissals (e.g. 'leave it', 'never mind'), pleasantries (e.g. 'hi', 'thanks'), or questions asking who you are or what you can do.\n"
         "- 'sql': Inquiries about numerical data, orders, revenue, customer accounts, sales figures, product stock, or database tables.\n"
-        "- 'rag': Inquiries about company policies, leave/PTO, SLAs, security guidelines, onboarding, employee manuals, or documentation.\n"
+        "- 'rag': Inquiries about company policies, employee leave/PTO, SLAs, security guidelines, onboarding, employee manuals, or documentation.\n"
         "- 'combined': Inquiries that explicitly ask for BOTH policy/documentation information AND numerical database/order metrics.\n\n"
         f"### Recent Conversation History:\n{history_text}\n\n"
         f"### User Question:\n{question}\n\n"
-        "Respond with ONLY one lowercase word: 'sql', 'rag', or 'combined'."
+        "Respond with ONLY one lowercase word: 'general', 'sql', 'rag', or 'combined'."
     )
 
-    llm = get_llm(temperature=0.0)
+    def _apply_heuristic(q: str) -> str:
+        q_clean = re.sub(r"[^\w\s]", "", q.lower()).strip()
+        tokens = q_clean.split()
+        if q_clean in conversational_phrases or (tokens and tokens[0] in {"hi", "hii", "hello", "hey"} and len(tokens) <= 4):
+            return "general"
+        if any(phrase in q_clean for phrase in [
+            "leave it", "never mind", "nevermind", "forget it", "drop it",
+            "good morning", "good afternoon", "good evening", "who are you", "what can you do", "help me"
+        ]):
+            return "general"
+
+        sql_keywords = ["order", "revenue", "customer", "sale", "price", "count", "top", "sum", "avg", "spend"]
+        doc_keywords = ["policy", "pto", "sla", "rule", "conduct", "handbook", "guideline", "security", "vacation"]
+        has_sql = any(k in q.lower() for k in sql_keywords)
+        has_doc = any(k in q.lower() for k in doc_keywords) or ("leave" in q.lower() and "leave it" not in q_clean)
+        if has_sql and has_doc:
+            return "combined"
+        elif has_sql:
+            return "sql"
+        return "rag"
+
     try:
+        llm = get_llm(temperature=0.0)
         response = llm.invoke(prompt)
         text_resp = response.content if hasattr(response, "content") else str(response)
         if isinstance(text_resp, list):
             text_resp = " ".join([p.get("text", "") for p in text_resp if isinstance(p, dict)])
         clean_intent = text_resp.strip().lower()
 
-        if "combined" in clean_intent:
+        if "general" in clean_intent:
+            intent = "general"
+        elif "combined" in clean_intent:
             intent = "combined"
         elif "sql" in clean_intent:
             intent = "sql"
         elif "rag" in clean_intent:
             intent = "rag"
         else:
-            # Fallback heuristic
-            sql_keywords = ["order", "revenue", "customer", "sale", "price", "count", "top", "sum", "avg", "spend"]
-            doc_keywords = ["policy", "leave", "pto", "sla", "rule", "conduct", "handbook", "guideline", "security"]
-            has_sql = any(k in question.lower() for k in sql_keywords)
-            has_doc = any(k in question.lower() for k in doc_keywords)
-            if has_sql and has_doc:
-                intent = "combined"
-            elif has_sql:
-                intent = "sql"
-            else:
-                intent = "rag"
+            intent = _apply_heuristic(question)
     except Exception:
-        intent = "rag"
+        intent = _apply_heuristic(question)
 
     return {"intent": intent}
 
@@ -120,10 +150,36 @@ def combined_node(state: AgentState) -> Dict[str, Any]:
     }
 
 
+def general_node(state: AgentState) -> Dict[str, Any]:
+    """Handles conversational greetings, dismissals, acknowledgments, and bot capabilities."""
+    q = state["question"].strip().lower()
+
+    if any(k in q for k in ["thank", "thx"]):
+        answer = "You're welcome! Let me know if you need anything else from our documents or database."
+    elif any(k in q for k in ["leave it", "never mind", "nevermind", "forget it", "drop it", "cancel", "no worries", "leave that"]):
+        answer = "No problem! Let me know whenever you're ready to query your documents or database."
+    elif any(k in q for k in ["ok", "okay", "got it", "understood", "alright", "cool", "fine"]):
+        answer = "Understood! Feel free to ask whenever you need help."
+    else:
+        answer = (
+            "Hello! I am your enterprise GenAI Data Assistant. I can help you with:\n"
+            "1. 📊 **Database Analytics (Text-to-SQL)**: Query customer data, revenue, orders, and sales figures.\n"
+            "2. 📄 **Document Search (RAG)**: Search company policies, employee handbook, PTO, security protocols, and SLAs.\n\n"
+            "How can I assist you today?"
+        )
+    return {
+        "final_answer": answer,
+        "sources": [],
+        "sql_logs": None
+    }
+
+
 def route_decision(state: AgentState) -> str:
     """Routing condition for conditional edge."""
     intent = state.get("intent", "rag")
-    if intent == "sql":
+    if intent == "general":
+        return "general_agent"
+    elif intent == "sql":
         return "sql_agent"
     elif intent == "combined":
         return "combined_agent"
@@ -134,6 +190,7 @@ def route_decision(state: AgentState) -> str:
 workflow = StateGraph(AgentState)
 
 workflow.add_node("classifier", classify_intent)
+workflow.add_node("general_agent", general_node)
 workflow.add_node("rag_agent", rag_node)
 workflow.add_node("sql_agent", sql_node)
 workflow.add_node("combined_agent", combined_node)
@@ -143,11 +200,13 @@ workflow.add_conditional_edges(
     "classifier",
     route_decision,
     {
+        "general_agent": "general_agent",
         "rag_agent": "rag_agent",
         "sql_agent": "sql_agent",
         "combined_agent": "combined_agent"
     }
 )
+workflow.add_edge("general_agent", END)
 workflow.add_edge("rag_agent", END)
 workflow.add_edge("sql_agent", END)
 workflow.add_edge("combined_agent", END)

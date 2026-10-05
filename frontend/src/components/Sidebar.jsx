@@ -1,12 +1,111 @@
-import React from 'react';
+import React, { useState, useRef } from 'react';
 
-export function Sidebar({ documents, onSelectPrompt, onIngest, isIngesting }) {
+export function Sidebar({ documents, onSelectPrompt, onIngest, isIngesting, onUpload, isUploading, onDeleteDocument }) {
   const samplePrompts = [
     "What is the company leave policy?",
     "Which are the top 5 customers by revenue?",
     "What is the refund policy and how much was refunded last month?",
     "What are the customer support SLA response times?"
   ];
+
+  const fileInputRef = useRef(null);
+  const [feedback, setFeedback] = useState(null);
+
+  const handleDelete = async (docSource) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${docSource}" from the Knowledge Base?`
+    );
+    if (!confirmed) return;
+
+    try {
+      setFeedback({ type: 'info', message: `Deleting "${docSource}"...` });
+      const res = await onDeleteDocument(docSource);
+      setFeedback({
+        type: 'success',
+        message: res.message || `Deleted "${docSource}" successfully.`
+      });
+      setTimeout(() => {
+        setFeedback((prev) => (prev?.type === 'success' ? null : prev));
+      }, 4000);
+    } catch (err) {
+      setFeedback({
+        type: 'error',
+        message: err.message || `Failed to delete "${docSource}".`
+      });
+    }
+  };
+
+  const handleFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    const ALLOWED_EXTS = ['.pdf', '.docx', '.txt', '.md', '.markdown'];
+    const fileName = file.name || '';
+    const ext = '.' + (fileName.split('.').pop() || '').toLowerCase();
+
+    // 1. Validate file extension
+    if (!ALLOWED_EXTS.includes(ext)) {
+      setFeedback({
+        type: 'error',
+        message: `Unsupported format "${ext}". Allowed: ${ALLOWED_EXTS.join(', ')}`
+      });
+      return;
+    }
+
+    // 2. Validate empty file
+    if (file.size === 0) {
+      setFeedback({
+        type: 'error',
+        message: `"${fileName}" is empty (0 bytes). Please upload a valid document.`
+      });
+      return;
+    }
+
+    // 3. Validate maximum size (15MB)
+    const MAX_SIZE_MB = 15;
+    const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
+    if (file.size > MAX_SIZE_BYTES) {
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+      setFeedback({
+        type: 'error',
+        message: `"${fileName}" is ${sizeMb}MB. Maximum allowed size is ${MAX_SIZE_MB}MB.`
+      });
+      return;
+    }
+
+    // 4. Validate duplicate document name
+    const isDuplicate = (documents || []).some(
+      (d) => (d.source || '').toLowerCase() === fileName.toLowerCase()
+    );
+    if (isDuplicate) {
+      const overwrite = window.confirm(
+        `"${fileName}" already exists in the Knowledge Base.\n\nDo you want to overwrite and re-index it?`
+      );
+      if (!overwrite) return;
+    }
+
+    setFeedback({
+      type: 'info',
+      message: `Uploading and indexing "${fileName}"...`
+    });
+
+    try {
+      const res = await onUpload(file);
+      setFeedback({
+        type: 'success',
+        message: res.message || `Indexed ${res.chunks_indexed || 0} chunks for "${fileName}".`
+      });
+      setTimeout(() => {
+        setFeedback((prev) => (prev?.type === 'success' ? null : prev));
+      }, 5000);
+    } catch (err) {
+      setFeedback({
+        type: 'error',
+        message: err.message || 'Failed to upload document.'
+      });
+    }
+  };
 
   return (
     <aside className="sidebar">
@@ -30,6 +129,53 @@ export function Sidebar({ documents, onSelectPrompt, onIngest, isIngesting }) {
             <span>Knowledge Base</span>
             <span className="doc-count-badge">{documents.length} Files</span>
           </div>
+
+          {/* Hidden file input */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            accept=".pdf,.docx,.txt,.md,.markdown"
+            style={{ display: 'none' }}
+            onChange={handleFileSelect}
+          />
+
+          {/* Upload Button */}
+          <button
+            type="button"
+            className="btn-upload"
+            disabled={isUploading || isIngesting}
+            onClick={() => fileInputRef.current?.click()}
+            title="Upload and index a document (.pdf, .docx, .txt, .md)"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+            <span>{isUploading ? 'Uploading & Indexing...' : 'Upload Document'}</span>
+          </button>
+
+          {/* Validation / Feedback Banner */}
+          {feedback && (
+            <div className={`upload-feedback upload-feedback-${feedback.type}`}>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-start', flex: 1 }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}>
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                <span>{feedback.message}</span>
+              </div>
+              <button
+                type="button"
+                className="upload-feedback-close"
+                onClick={() => setFeedback(null)}
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           <ul className="doc-list">
             {documents.length === 0 ? (
               <li style={{ fontSize: '12px', color: 'var(--text-dim)', padding: '4px 8px' }}>
@@ -47,7 +193,23 @@ export function Sidebar({ documents, onSelectPrompt, onIngest, isIngesting }) {
                       </svg>
                       <span className="doc-name" title={doc.source}>{doc.source}</span>
                     </div>
-                    <span className="doc-tag">{ext}</span>
+                    <div className="doc-actions">
+                      <span className="doc-tag">{ext}</span>
+                      <button
+                        type="button"
+                        className="doc-btn-delete"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(doc.source);
+                        }}
+                        title={`Delete "${doc.source}"`}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        </svg>
+                      </button>
+                    </div>
                   </li>
                 );
               })

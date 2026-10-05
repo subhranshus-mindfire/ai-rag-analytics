@@ -18,13 +18,13 @@ class EmbeddingManager:
             from fastembed import TextEmbedding
             self._model = TextEmbedding(model_name=self.model_name)
             self._provider = "fastembed"
-        except ImportError:
+        except (ImportError, Exception):
             try:
                 from langchain_community.embeddings import HuggingFaceEmbeddings
                 self._model = HuggingFaceEmbeddings(model_name=self.model_name)
                 self._provider = "langchain"
-            except ImportError:
-                # Deterministic pseudo-embedding for testing without heavy dependencies
+            except (ImportError, Exception):
+                # Deterministic pseudo-embedding for testing without heavy dependencies or network
                 self._provider = "fallback"
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
