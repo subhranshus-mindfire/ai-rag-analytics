@@ -1,7 +1,7 @@
 import time
 import logging
-from typing import Dict, Any, List
-from app.utils.core_utils.db_utils import db_manager
+from typing import Dict, Any, List, Optional
+from app.utils.core_utils.db_utils import db_manager, DatabaseManager
 from app.tools.retriever_tool import sql_validator, SecurityValidationError
 from app.llms.llm_factory import get_llm
 from app.config.env_config import settings
@@ -13,9 +13,9 @@ logger.setLevel(logging.INFO)
 class SQLAgent:
     """Natural Language to SQL Agent with schema awareness, safety validation, and self-healing."""
 
-    def __init__(self):
-        self.db = db_manager
-        self.validator = sql_validator
+    def __init__(self, db: Optional[DatabaseManager] = None, validator: Optional[Any] = None):
+        self.db = db if db is not None else db_manager
+        self.validator = validator if validator is not None else sql_validator
 
     def get_schema_prompt(self) -> str:
         return self.db.get_schema_summary()
