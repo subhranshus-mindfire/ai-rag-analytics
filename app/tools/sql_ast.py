@@ -144,6 +144,7 @@ class ExpNamespace:
     Drop = Drop
     Alter = Alter
     Truncate = Truncate
+    TruncateTable = Truncate
     Create = Create
     Command = Command
     Literal = Literal

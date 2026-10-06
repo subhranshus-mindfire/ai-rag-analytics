@@ -26,15 +26,12 @@ class SQLValidator:
     neutralizing SQL comments, literal evasion, and stacked multi-statement injections.
     """
 
-    FORBIDDEN_EXPRESSIONS = (
-        exp.Insert,
-        exp.Update,
-        exp.Delete,
-        exp.Drop,
-        exp.Alter,
-        exp.Truncate,
-        exp.Create,
-        exp.Command,
+    _FORBIDDEN_EXPR_NAMES = [
+        "Insert", "Update", "Delete", "Drop", "Alter",
+        "Truncate", "TruncateTable", "Create", "Command"
+    ]
+    FORBIDDEN_EXPRESSIONS = tuple(
+        getattr(exp, name) for name in _FORBIDDEN_EXPR_NAMES if hasattr(exp, name)
     )
 
     FORBIDDEN_KEYWORDS: Set[str] = {
@@ -76,14 +73,16 @@ class SQLValidator:
 
         # 4. Strictly verify root expression is SELECT or UNION
         if not isinstance(parsed, (exp.Select, exp.Union)):
+            name = getattr(parsed, "key", parsed.__class__.__name__).upper()
             raise SecurityValidationError(
-                f"Only read-only SELECT or WITH statements are permitted (detected: '{parsed.key.upper()}')."
+                f"Only read-only SELECT or WITH statements are permitted (detected: '{name}')."
             )
 
         # 5. Deep AST Traversal: Verify NO mutating expressions anywhere in the tree (including CTEs & subqueries)
         for expr in parsed.find_all(cls.FORBIDDEN_EXPRESSIONS):
+            name = getattr(expr, "key", expr.__class__.__name__).upper()
             raise SecurityValidationError(
-                f"Forbidden SQL operation detected: '{expr.key.upper()}' is prohibited."
+                f"Forbidden SQL operation detected: '{name}' is prohibited."
             )
 
         # 6. Defense-in-depth: Inspect all non-literal words for blacklisted operational keywords
