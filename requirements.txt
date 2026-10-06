@@ -24,3 +24,4 @@ langgraph>=0.2.20
 # Relational Database / Text-to-SQL
 sqlalchemy>=2.0.30
 psycopg2-binary>=2.9.9
+sqlglot>=25.0.0
