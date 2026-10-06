@@ -8,9 +8,18 @@ from app.health import router as health_router
 from app.routes.core_routes.router import router as core_router
 from app.services.core_services.ingestion_service import ingestion_service
 from app.exceptions.handlers import app_error_handler, request_validation_handler
+from app.database import check_db_connection, close_db, run_migrations
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Startup: Verify database connectivity and apply migrations
+    db_ok, dialect = check_db_connection()
+    if db_ok:
+        print(f"[*] Database connected successfully ({dialect}).")
+        run_migrations()
+    else:
+        print(f"[!] Warning: Database check failed: {dialect}")
+
     # Startup: Auto-index documents in data/documents/ on boot
     docs_dir = Path("data/documents")
     if docs_dir.exists() and ingestion_service.vector_store.count() == 0:
@@ -21,6 +30,9 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"[!] Warning: Auto-indexing encountered an issue: {e}")
     yield
+
+    # Shutdown: Cleanly dispose connection pool
+    close_db()
 
 def start_application() -> FastAPI:
     app = FastAPI(
