@@ -260,12 +260,10 @@ def parse_one(sql: str, read: Optional[str] = None, **kwargs) -> Expression:
         return Select(children=children, raw_sql=cleaned)
 
     if first_word == "WITH":
-        # Check if the CTE terminates with a SELECT
+        # Record Select as child if present
         words = [t[1].upper() for t in meaningful if t[0] == "WORD"]
-        if "SELECT" in words:
-            if has_union:
-                return Union(children=children, raw_sql=cleaned)
-            return Select(children=children, raw_sql=cleaned)
+        if "SELECT" in words and not any(isinstance(c, Select) for c in children):
+            children.append(Select(raw_sql="SELECT"))
         return With(children=children, raw_sql=cleaned)
 
     if first_word in mutating_map:

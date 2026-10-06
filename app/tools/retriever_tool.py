@@ -71,8 +71,11 @@ class SQLValidator:
         if parsed is None:
             raise SecurityValidationError("Unable to parse SQL statement.")
 
-        # 4. Strictly verify root expression is SELECT or UNION
-        if not isinstance(parsed, (exp.Select, exp.Union)):
+        # 4. Strictly verify root expression is SELECT, UNION, or WITH (CTE)
+        allowed_root_types = tuple(
+            getattr(exp, name) for name in ["Select", "Union", "With"] if hasattr(exp, name)
+        )
+        if not isinstance(parsed, allowed_root_types):
             name = getattr(parsed, "key", parsed.__class__.__name__).upper()
             raise SecurityValidationError(
                 f"Only read-only SELECT or WITH statements are permitted (detected: '{name}')."

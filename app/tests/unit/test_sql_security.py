@@ -136,5 +136,86 @@ class TestSQLSecurityAndValidation(unittest.TestCase):
                     self.validator.sanitize_and_validate(q)
 
 
+import app.tools.sql_ast as custom_ast
+
+
+class TestCustomSQLASTParser(unittest.TestCase):
+    def test_custom_ast_tokenizer(self):
+        tokens = custom_ast.tokenize_sql("SELECT id, 'note' AS n FROM users WHERE id = 1; -- comment\n/* block */")
+        self.assertTrue(len(tokens) > 0)
+        types = [t[0] for t in tokens]
+        self.assertIn("WORD", types)
+        self.assertIn("STRING", types)
+        self.assertIn("COMMENT", types)
+
+    def test_custom_ast_parse_one(self):
+        sel = custom_ast.parse_one("SELECT id FROM users;")
+        self.assertIsInstance(sel, custom_ast.exp.Select)
+        self.assertEqual(sel.key, "select")
+        self.assertEqual(repr(sel), "Select(key='select')")
+        self.assertEqual(sel.sql(), "SELECT id FROM users")
+
+        union_node = custom_ast.parse_one("SELECT 1 UNION SELECT 2;")
+        self.assertIsInstance(union_node, custom_ast.exp.Union)
+
+        cte_node = custom_ast.parse_one("WITH c AS (SELECT 1) SELECT * FROM c;")
+        self.assertIsInstance(cte_node, custom_ast.exp.With)
+        self.assertIsNotNone(cte_node.find(custom_ast.exp.Select))
+
+        cte_only = custom_ast.parse_one("WITH c AS (SELECT 1) DELETE FROM c;")
+        self.assertIsInstance(cte_only, custom_ast.exp.With)
+        self.assertIsNotNone(cte_only.find(custom_ast.exp.Delete))
+
+    def test_custom_ast_mutations_and_commands(self):
+        drop_node = custom_ast.parse_one("DROP TABLE users;")
+        self.assertIsInstance(drop_node, custom_ast.exp.Drop)
+
+        del_node = custom_ast.parse_one("DELETE FROM users;")
+        self.assertIsInstance(del_node, custom_ast.exp.Delete)
+
+        upd_node = custom_ast.parse_one("UPDATE users SET name = 'a';")
+        self.assertIsInstance(upd_node, custom_ast.exp.Update)
+
+        ins_node = custom_ast.parse_one("INSERT INTO users VALUES (1);")
+        self.assertIsInstance(ins_node, custom_ast.exp.Insert)
+
+        alt_node = custom_ast.parse_one("ALTER TABLE users ADD COLUMN c INT;")
+        self.assertIsInstance(alt_node, custom_ast.exp.Alter)
+
+        trunc_node = custom_ast.parse_one("TRUNCATE TABLE users;")
+        self.assertIsInstance(trunc_node, custom_ast.exp.Truncate)
+
+        create_node = custom_ast.parse_one("CREATE TABLE users (id INT);")
+        self.assertIsInstance(create_node, custom_ast.exp.Create)
+
+        cmd_node = custom_ast.parse_one("PRAGMA foreign_keys = ON;")
+        self.assertIsInstance(cmd_node, custom_ast.exp.Command)
+
+    def test_custom_ast_find_and_walk(self):
+        tree = custom_ast.parse_one("SELECT * FROM users WHERE id IN (DELETE FROM old_users);")
+        del_nodes = list(tree.find_all(custom_ast.exp.Delete))
+        self.assertEqual(len(del_nodes), 1)
+        found = tree.find(custom_ast.exp.Delete)
+        self.assertIsNotNone(found)
+        none_found = tree.find(custom_ast.exp.Drop)
+        self.assertIsNone(none_found)
+
+    def test_custom_ast_errors(self):
+        with self.assertRaises(custom_ast.ParseError):
+            custom_ast.parse_one("")
+        with self.assertRaises(custom_ast.ParseError):
+            custom_ast.parse_one("-- comment only\n")
+        with self.assertRaises(custom_ast.ParseError):
+            custom_ast.parse_one("SELECT 1; DROP TABLE users;")
+        with self.assertRaises(custom_ast.ParseError):
+            custom_ast.parse_one(";")
+
+    def test_custom_ast_literals_and_identifiers(self):
+        lit = custom_ast.exp.Literal("val", raw_sql="'val'")
+        ident = custom_ast.exp.Identifier("col", raw_sql="col")
+        self.assertEqual(lit.value, "val")
+        self.assertEqual(ident.name, "col")
+
+
 if __name__ == "__main__":
     unittest.main()
