@@ -1,44 +1,40 @@
 import re
+import logging
 from pathlib import Path
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any, Tuple, Optional
 from sqlalchemy import create_engine, text, inspect
+from sqlalchemy.engine import Engine
 from app.config.env_config import settings
+from app.database import engine as default_engine, db_dialect as default_dialect, get_db_context
+
+logger = logging.getLogger("DatabaseManager")
+
 
 class DatabaseManager:
-    """Manages database connection to PostgreSQL with fallback to SQLite."""
+    """
+    Manages database interaction, schema introspection, and execution.
+    Can be instantiated with a custom engine or defaults to the centralized database engine.
+    """
 
-    def __init__(self):
-        self.engine = None
-        self.db_type = "unknown"
-        self._init_connection()
+    def __init__(self, engine: Optional[Engine] = None):
+        if engine is not None:
+            self.engine = engine
+            self.db_type = engine.dialect.name
+        else:
+            self.engine = default_engine
+            self.db_type = default_dialect
 
-    def _init_connection(self):
-        # 1. Attempt connection using configured DATABASE_URL
-        try:
-            target_engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
-            with target_engine.connect() as conn:
-                conn.execute(text("SELECT 1"))
-            self.engine = target_engine
-            self.db_type = target_engine.dialect.name
-            if self.db_type == "sqlite":
-                self._seed_sqlite_if_needed()
-            return
-        except Exception:
-            pass
-
-        # 2. Resilient local fallback to SQLite database seeded with init.sql
-        sqlite_path = Path("data/sql/analytics_fallback.db")
-        sqlite_path.parent.mkdir(parents=True, exist_ok=True)
-        sqlite_url = f"sqlite:///{sqlite_path.resolve()}"
-        self.engine = create_engine(sqlite_url)
-        self.db_type = "sqlite"
-        self._seed_sqlite_if_needed()
+        if self.db_type == "sqlite":
+            self._seed_sqlite_if_needed()
 
     def _seed_sqlite_if_needed(self):
-        """Initializes tables and seeds data in SQLite replica for local testing."""
-        inspector = inspect(self.engine)
-        if "customers" in inspector.get_table_names():
-            return
+        """Initializes tables and seeds data in SQLite replica for local testing if not present."""
+        try:
+            inspector = inspect(self.engine)
+            if "customers" in inspector.get_table_names():
+                return
+        except Exception:
+            pass
 
         init_sql_path = Path("data/sql/init.sql")
         if not init_sql_path.exists():
@@ -80,5 +76,6 @@ class DatabaseManager:
             columns = list(result.keys()) if result.returns_rows else []
             rows = [dict(zip(columns, row)) for row in result.fetchall()] if result.returns_rows else []
             return columns, rows
+
 
 db_manager = DatabaseManager()
