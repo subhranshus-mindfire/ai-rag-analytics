@@ -98,6 +98,29 @@ class TestAPIEndpoints(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertIn('"type": "error"', res.text)
 
+    @patch("app.routes.core_routes.chat_route.process_chat_message")
+    def test_chat_endpoint_success(self, mock_process):
+        mock_process.return_value = {
+            "session_id": "test_sync",
+            "intent": "general",
+            "answer": "Hello from mock agent!",
+            "sources": [],
+            "sql_query": None,
+            "sql_logs": None
+        }
+        res = self.client.post("/chat", json={"message": "hello", "session_id": "test_sync"})
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["answer"], "Hello from mock agent!")
+        self.assertEqual(data["intent"], "general")
+
+    @patch("app.routes.core_routes.chat_route.process_chat_message")
+    def test_chat_endpoint_error_handling(self, mock_process):
+        mock_process.side_effect = RuntimeError("Agent internal failure")
+        res = self.client.post("/chat", json={"message": "trigger fail", "session_id": "err_sync"})
+        self.assertEqual(res.status_code, 500)
+        self.assertIn("Agent error", res.json()["detail"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3,9 +3,10 @@ Unit tests covering LangGraph nodes and SQL Agent error retries.
 """
 import unittest
 from unittest.mock import patch, MagicMock
-from app.agents.supervisor_agent import rag_node, sql_node, combined_node, process_chat_stream
+from app.agents.supervisor_agent import rag_node, sql_node, combined_node, process_chat_stream, classify_intent
 from app.agents.retriever_agent import SQLAgent
 from app.agents.base_agent import AgentState
+from app.schemas.core_schemas.structured_output_schema import RouteDecision, SQLQueryOutput
 
 
 class TestAgentNodesCoverage(unittest.TestCase):
@@ -49,6 +50,7 @@ class TestAgentNodesCoverage(unittest.TestCase):
     @patch("app.agents.retriever_agent.get_llm")
     def test_sql_agent_generate_sql_with_feedback(self, mock_get_llm):
         mock_llm = MagicMock()
+        mock_llm.with_structured_output.side_effect = NotImplementedError("Not supported")
         mock_resp = MagicMock()
         mock_resp.content = "```sql\nSELECT COUNT(*) FROM customers;\n```"
         mock_llm.invoke.return_value = mock_resp
@@ -56,6 +58,89 @@ class TestAgentNodesCoverage(unittest.TestCase):
 
         sql = self.sql_agent.generate_sql("count customers", error_feedback="column not found")
         self.assertIn("SELECT", sql)
+
+    @patch("app.agents.retriever_agent.get_llm")
+    def test_sql_agent_generate_sql_structured_output_model(self, mock_get_llm):
+        mock_llm = MagicMock()
+        mock_structured = MagicMock()
+        mock_structured.invoke.return_value = SQLQueryOutput(
+            sql_query="SELECT id, name FROM users;",
+            explanation="Fetch user records"
+        )
+        mock_llm.with_structured_output.return_value = mock_structured
+        mock_get_llm.return_value = mock_llm
+
+        sql = self.sql_agent.generate_sql("list all users")
+        self.assertEqual(sql, "SELECT id, name FROM users;")
+
+    @patch("app.agents.retriever_agent.get_llm")
+    def test_sql_agent_generate_sql_structured_output_dict(self, mock_get_llm):
+        mock_llm = MagicMock()
+        mock_structured = MagicMock()
+        mock_structured.invoke.return_value = {
+            "sql_query": "SELECT * FROM orders ORDER BY amount DESC;",
+            "explanation": "Highest value orders"
+        }
+        mock_llm.with_structured_output.return_value = mock_structured
+        mock_get_llm.return_value = mock_llm
+
+        sql = self.sql_agent.generate_sql("top orders")
+        self.assertEqual(sql, "SELECT * FROM orders ORDER BY amount DESC;")
+
+    @patch("app.agents.retriever_agent.get_llm")
+    def test_sql_agent_generate_sql_json_fallback(self, mock_get_llm):
+        mock_llm = MagicMock()
+        mock_llm.with_structured_output.side_effect = NotImplementedError()
+        mock_resp = MagicMock()
+        mock_resp.content = '{"sql_query": "SELECT SUM(total) FROM sales;", "explanation": "Total sales revenue"}'
+        mock_llm.invoke.return_value = mock_resp
+        mock_get_llm.return_value = mock_llm
+
+        sql = self.sql_agent.generate_sql("total sales")
+        self.assertEqual(sql, "SELECT SUM(total) FROM sales;")
+
+    @patch("app.agents.supervisor_agent.get_llm")
+    def test_classify_intent_structured_output_model(self, mock_get_llm):
+        mock_llm = MagicMock()
+        mock_structured = MagicMock()
+        mock_structured.invoke.return_value = RouteDecision(
+            intent="sql",
+            reasoning="Numerical calculation request"
+        )
+        mock_llm.with_structured_output.return_value = mock_structured
+        mock_get_llm.return_value = mock_llm
+
+        decision = classify_intent({"question": "Show top 10 products by price"})
+        self.assertEqual(decision["intent"], "sql")
+        self.assertEqual(decision["reasoning"], "Numerical calculation request")
+
+    @patch("app.agents.supervisor_agent.get_llm")
+    def test_classify_intent_structured_output_dict(self, mock_get_llm):
+        mock_llm = MagicMock()
+        mock_structured = MagicMock()
+        mock_structured.invoke.return_value = {
+            "intent": "rag",
+            "reasoning": "Inquiring about parental leave documentation"
+        }
+        mock_llm.with_structured_output.return_value = mock_structured
+        mock_get_llm.return_value = mock_llm
+
+        decision = classify_intent({"question": "What is the parental leave duration?"})
+        self.assertEqual(decision["intent"], "rag")
+        self.assertEqual(decision["reasoning"], "Inquiring about parental leave documentation")
+
+    @patch("app.agents.supervisor_agent.get_llm")
+    def test_classify_intent_json_fallback(self, mock_get_llm):
+        mock_llm = MagicMock()
+        mock_llm.with_structured_output.side_effect = NotImplementedError()
+        mock_resp = MagicMock()
+        mock_resp.content = '```json\n{"intent": "combined", "reasoning": "Requires both policy rules and customer data"}\n```'
+        mock_llm.invoke.return_value = mock_resp
+        mock_get_llm.return_value = mock_llm
+
+        decision = classify_intent({"question": "What is the return policy and how many items were refunded?"})
+        self.assertEqual(decision["intent"], "combined")
+        self.assertEqual(decision["reasoning"], "Requires both policy rules and customer data")
 
     def test_sql_agent_execute_and_log(self):
         res = self.sql_agent.execute_and_log("SELECT COUNT(*) AS total FROM products;")

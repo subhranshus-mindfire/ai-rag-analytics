@@ -5,6 +5,7 @@ from app.utils.core_utils.db_utils import db_manager
 from app.tools.retriever_tool import sql_validator, SecurityValidationError
 from app.llms.llm_factory import get_llm
 from app.config.env_config import settings
+from app.schemas.core_schemas.structured_output_schema import SQLQueryOutput
 
 logger = logging.getLogger("SQLAgent")
 logger.setLevel(logging.INFO)
@@ -20,7 +21,7 @@ class SQLAgent:
         return self.db.get_schema_summary()
 
     def generate_sql(self, question: str, error_feedback: str = None) -> str:
-        """Prompts LLM to translate natural language into a PostgreSQL-compatible SELECT query."""
+        """Prompts LLM to translate natural language into a PostgreSQL-compatible SELECT query using structured outputs."""
         schema = self.get_schema_prompt()
 
         feedback_section = ""
@@ -38,14 +39,29 @@ class SQLAgent:
             f"{feedback_section}\n"
             "### Instructions:\n"
             "- Only generate SELECT queries. Never generate DROP, DELETE, UPDATE, INSERT, or ALTER.\n"
-            "- Output ONLY the executable SQL query inside a markdown codeblock (```sql ... ```).\n"
-            "- Use standard joins, aggregations, and ORDER BY as appropriate.\n"
-            "- Do not include explanations.\n\n"
-            f"### Question:\n{question}\n\n"
-            "### SQL Query:"
+            "- Output a structured object containing 'sql_query' and 'explanation'.\n"
+            "- 'sql_query' must contain only the raw executable SQL statement.\n"
+            "- Use standard joins, aggregations, and ORDER BY as appropriate.\n\n"
+            f"### Question:\n{question}\n"
         )
 
         llm = get_llm(temperature=0.0)
+
+        # 1. First-class structured output via Pydantic model
+        if hasattr(llm, "with_structured_output"):
+            try:
+                structured_llm = llm.with_structured_output(SQLQueryOutput)
+                result = structured_llm.invoke(prompt)
+                if isinstance(result, SQLQueryOutput) and result.sql_query:
+                    return result.sql_query
+                elif isinstance(result, dict) and "sql_query" in result:
+                    parsed = SQLQueryOutput.model_validate(result)
+                    if parsed.sql_query:
+                        return parsed.sql_query
+            except (NotImplementedError, Exception):
+                pass
+
+        # 2. Resilient fallback: LLM invocation + JSON/Pydantic validation or raw SQL extraction
         response = llm.invoke(prompt)
         raw_text = response.content if hasattr(response, "content") else str(response)
 
@@ -54,7 +70,20 @@ class SQLAgent:
             parts = [item.get("text", "") for item in raw_text if isinstance(item, dict)]
             raw_text = "\n".join(parts) if parts else str(raw_text)
 
-        return str(raw_text)
+        clean_text = str(raw_text).strip()
+
+        # Try parsing JSON into SQLQueryOutput
+        if "{" in clean_text and "}" in clean_text:
+            try:
+                start = clean_text.find("{")
+                end = clean_text.rfind("}")
+                parsed = SQLQueryOutput.model_validate_json(clean_text[start:end+1])
+                if parsed.sql_query:
+                    return parsed.sql_query
+            except Exception:
+                pass
+
+        return clean_text
 
     def execute_and_log(self, raw_sql: str) -> Dict[str, Any]:
         """Validates and executes a SQL query, recording execution metrics."""
