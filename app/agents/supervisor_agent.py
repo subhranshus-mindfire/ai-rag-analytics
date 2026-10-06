@@ -5,6 +5,7 @@ from app.agents.base_agent import AgentState
 from app.services.core_services.retrieval_service import retrieval_service
 from app.agents.retriever_agent import sql_agent
 from app.llms.llm_factory import get_llm
+from app.schemas.core_schemas.structured_output_schema import RouteDecision
 
 # In-memory session store for conversation history
 session_memory_store: Dict[str, List[Dict[str, str]]] = {}
@@ -41,7 +42,7 @@ def classify_intent(state: AgentState) -> Dict[str, Any]:
         "- 'combined': Inquiries that explicitly ask for BOTH policy/documentation information AND numerical database/order metrics.\n\n"
         f"### Recent Conversation History:\n{history_text}\n\n"
         f"### User Question:\n{question}\n\n"
-        "Respond with ONLY one lowercase word: 'general', 'sql', 'rag', or 'combined'."
+        "Provide your routing decision as a structured object with 'intent' and 'reasoning'."
     )
 
     def _apply_heuristic(q: str) -> str:
@@ -67,12 +68,38 @@ def classify_intent(state: AgentState) -> Dict[str, Any]:
 
     try:
         llm = get_llm(temperature=0.0)
+
+        # 1. First-class structured output via Pydantic model
+        if hasattr(llm, "with_structured_output"):
+            try:
+                structured_llm = llm.with_structured_output(RouteDecision)
+                decision = structured_llm.invoke(prompt)
+                if isinstance(decision, RouteDecision):
+                    return {"intent": decision.intent, "reasoning": decision.reasoning}
+                elif isinstance(decision, dict) and "intent" in decision:
+                    valid_decision = RouteDecision.model_validate(decision)
+                    return {"intent": valid_decision.intent, "reasoning": valid_decision.reasoning}
+            except (NotImplementedError, Exception):
+                pass
+
+        # 2. Resilient Fallback: text extraction with Pydantic JSON validation
         response = llm.invoke(prompt)
         text_resp = response.content if hasattr(response, "content") else str(response)
         if isinstance(text_resp, list):
             text_resp = " ".join([p.get("text", "") for p in text_resp if isinstance(p, dict)])
-        clean_intent = text_resp.strip().lower()
+        clean_text = str(text_resp).strip()
 
+        # Try parsing JSON into RouteDecision
+        if "{" in clean_text and "}" in clean_text:
+            try:
+                start = clean_text.find("{")
+                end = clean_text.rfind("}")
+                parsed = RouteDecision.model_validate_json(clean_text[start:end+1])
+                return {"intent": parsed.intent, "reasoning": parsed.reasoning}
+            except Exception:
+                pass
+
+        clean_intent = clean_text.lower()
         if "general" in clean_intent:
             intent = "general"
         elif "combined" in clean_intent:
