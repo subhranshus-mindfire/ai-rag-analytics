@@ -1,13 +1,14 @@
 import re
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from langgraph.graph import StateGraph, START, END
 from app.agents.base_agent import AgentState
 from app.services.core_services.retrieval_service import retrieval_service
 from app.agents.retriever_agent import sql_agent
 from app.llms.llm_factory import get_llm
 from app.schemas.core_schemas.structured_output_schema import RouteDecision
+from app.agents.checkpoint_saver import SqliteSaver, get_default_checkpointer
 
-# In-memory session store for conversation history
+# In-memory session store for backwards-compatible inspection
 session_memory_store: Dict[str, List[Dict[str, str]]] = {}
 
 def classify_intent(state: AgentState) -> Dict[str, Any]:
@@ -123,7 +124,8 @@ def rag_node(state: AgentState) -> Dict[str, Any]:
         "rag_result": res,
         "final_answer": res["answer"],
         "sources": res.get("sources", []),
-        "sql_logs": None
+        "sql_logs": None,
+        "messages": [{"role": "assistant", "content": res["answer"]}]
     }
 
 
@@ -134,7 +136,8 @@ def sql_node(state: AgentState) -> Dict[str, Any]:
         "sql_result": res,
         "final_answer": res["answer"],
         "sources": [],
-        "sql_logs": res.get("logs")
+        "sql_logs": res.get("logs"),
+        "messages": [{"role": "assistant", "content": res["answer"]}]
     }
 
 
@@ -150,7 +153,7 @@ def combined_node(state: AgentState) -> Dict[str, Any]:
         "and database results below.\n\n"
         f"### User Question:\n{question}\n\n"
         f"### Document Findings:\n{rag_res.get('answer', 'N/A')}\n\n"
-        f"### Database Analytics:\n{sql_res.get('answer', 'N/A')}\n"
+        f"### Database Analytics:\n{sql_res.get('answer', 'N/A')}\n\n"
         f"Executed SQL: {sql_res.get('sql_query', 'N/A')}\n\n"
         "### Final Combined Answer:"
     )
@@ -173,7 +176,8 @@ def combined_node(state: AgentState) -> Dict[str, Any]:
         "sql_result": sql_res,
         "final_answer": final_answer,
         "sources": rag_res.get("sources", []),
-        "sql_logs": sql_res.get("logs")
+        "sql_logs": sql_res.get("logs"),
+        "messages": [{"role": "assistant", "content": final_answer}]
     }
 
 
@@ -197,7 +201,8 @@ def general_node(state: AgentState) -> Dict[str, Any]:
     return {
         "final_answer": answer,
         "sources": [],
-        "sql_logs": None
+        "sql_logs": None,
+        "messages": [{"role": "assistant", "content": answer}]
     }
 
 
@@ -238,19 +243,43 @@ workflow.add_edge("rag_agent", END)
 workflow.add_edge("sql_agent", END)
 workflow.add_edge("combined_agent", END)
 
-orchestration_graph = workflow.compile()
+class SafeGraphWrapper:
+    """
+    Ensures invocation with thread_id configuration while allowing
+    seamless compatibility for callers that do not supply config.
+    """
+    def __init__(self, inner, checkpointer):
+        self._inner = inner
+        self.checkpointer = checkpointer
+
+    def invoke(self, input_val: Dict[str, Any], config: Optional[Dict[str, Any]] = None, **kwargs) -> Dict[str, Any]:
+        if config is None or "configurable" not in config:
+            thread_id = input_val.get("session_id", "default") if isinstance(input_val, dict) else "default"
+            config = {"configurable": {"thread_id": thread_id}}
+        return self._inner.invoke(input_val, config=config, **kwargs)
+
+    def get_state(self, config: Dict[str, Any], **kwargs):
+        return self._inner.get_state(config, **kwargs)
+
+    def update_state(self, config: Dict[str, Any], values: Dict[str, Any], **kwargs):
+        return self._inner.update_state(config, values, **kwargs)
+
+    def __getattr__(self, name: str):
+        return getattr(self._inner, name)
+
+
+checkpointer = get_default_checkpointer()
+raw_graph = workflow.compile(checkpointer=checkpointer)
+orchestration_graph = SafeGraphWrapper(raw_graph, checkpointer)
 
 
 def process_chat_message(message: str, session_id: str = "default") -> Dict[str, Any]:
-    """High-level conversation coordinator with multi-turn history."""
-    if session_id not in session_memory_store:
-        session_memory_store[session_id] = []
-
-    history = session_memory_store[session_id]
+    """High-level conversation coordinator with native LangGraph checkpointer state persistence."""
+    config = {"configurable": {"thread_id": session_id}}
 
     initial_state: AgentState = {
         "session_id": session_id,
-        "messages": history,
+        "messages": [{"role": "user", "content": message}],
         "question": message,
         "intent": None,
         "rag_result": None,
@@ -260,9 +289,11 @@ def process_chat_message(message: str, session_id: str = "default") -> Dict[str,
         "sql_logs": None
     }
 
-    final_state = orchestration_graph.invoke(initial_state)
+    final_state = orchestration_graph.invoke(initial_state, config=config)
 
-    # Append to session history
+    # Sync backwards-compatible session memory store
+    if session_id not in session_memory_store:
+        session_memory_store[session_id] = []
     session_memory_store[session_id].append({"role": "user", "content": message})
     session_memory_store[session_id].append({"role": "assistant", "content": final_state.get("final_answer", "")})
 
@@ -287,10 +318,15 @@ def process_chat_stream(message: str, session_id: str = "default"):
       - {"type": "token", "content": "..."}
       - {"type": "done", "session_id": "...", "final_answer": "...", ...}
     """
-    if session_id not in session_memory_store:
-        session_memory_store[session_id] = []
+    config = {"configurable": {"thread_id": session_id}}
 
-    history = session_memory_store[session_id]
+    state_tuple = orchestration_graph.get_state(config)
+    if state_tuple and hasattr(state_tuple, "values") and state_tuple.values.get("messages"):
+        history = list(state_tuple.values["messages"])
+    else:
+        if session_id not in session_memory_store:
+            session_memory_store[session_id] = []
+        history = session_memory_store[session_id]
 
     yield {"type": "status", "step": "Analyzing query intent..."}
 
@@ -440,9 +476,26 @@ def process_chat_stream(message: str, session_id: str = "default"):
 
     final_answer_str = "".join(full_tokens).strip()
 
-    # Save to session memory
+    # Save to session memory and native checkpointer
+    if session_id not in session_memory_store:
+        session_memory_store[session_id] = []
     session_memory_store[session_id].append({"role": "user", "content": message})
     session_memory_store[session_id].append({"role": "assistant", "content": final_answer_str})
+
+    try:
+        orchestration_graph.update_state(
+            config,
+            {
+                "messages": [
+                    {"role": "user", "content": message},
+                    {"role": "assistant", "content": final_answer_str}
+                ],
+                "final_answer": final_answer_str,
+                "intent": intent
+            }
+        )
+    except Exception:
+        pass
 
     yield {
         "type": "done",
@@ -453,3 +506,27 @@ def process_chat_stream(message: str, session_id: str = "default"):
         "sql_query": sql_query,
         "sql_logs": sql_logs
     }
+
+
+def get_session_state(session_id: str = "default") -> Dict[str, Any]:
+    """Retrieves full LangGraph checkpoint state for a given session thread."""
+    config = {"configurable": {"thread_id": session_id}}
+    state_tuple = orchestration_graph.get_state(config)
+    return state_tuple.values if state_tuple and hasattr(state_tuple, "values") else {}
+
+
+def get_session_history(session_id: str = "default") -> List[Dict[str, str]]:
+    """Returns message history from native checkpointer or fallback store."""
+    state = get_session_state(session_id)
+    if state.get("messages"):
+        return state["messages"]
+    return session_memory_store.get(session_id, [])
+
+
+def clear_session_state(session_id: str = "default") -> None:
+    """Purges thread checkpoints from SQLite and legacy in-memory store."""
+    if hasattr(checkpointer, "delete_thread"):
+        checkpointer.delete_thread(session_id)
+    if session_id in session_memory_store:
+        del session_memory_store[session_id]
+
