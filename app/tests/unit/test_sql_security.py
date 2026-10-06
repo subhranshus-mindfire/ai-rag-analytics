@@ -91,6 +91,50 @@ class TestSQLSecurityAndValidation(unittest.TestCase):
         first_val = list(rows[0].values())[0]
         self.assertTrue(first_val >= 0)
 
+    def test_ast_literal_with_forbidden_keyword_allowed(self):
+        query = "SELECT id, 'DROP TABLE users' AS note FROM logs WHERE status = 'DELETED';"
+        cleaned = self.validator.sanitize_and_validate(query)
+        self.assertIn("SELECT", cleaned)
+        self.assertIn("'DROP TABLE users'", cleaned)
+
+    def test_ast_comment_evasion_blocked(self):
+        comment_attacks = [
+            "/* leading comment */ DROP TABLE customers;",
+            "-- line comment\nDELETE FROM orders WHERE id = 1;",
+            "SELECT 1; /* comment */ DROP TABLE products;",
+            "/* bypass */ ALTER TABLE users ADD COLUMN pwned INT;"
+        ]
+        for q in comment_attacks:
+            with self.subTest(query=q):
+                with self.assertRaises(SecurityValidationError):
+                    self.validator.sanitize_and_validate(q)
+
+    def test_ast_cte_and_union_allowed(self):
+        union_query = "SELECT id FROM orders UNION SELECT id FROM returns;"
+        cleaned_union = self.validator.sanitize_and_validate(union_query)
+        self.assertIn("UNION", cleaned_union)
+
+        cte_query = "WITH recent AS (SELECT id, amount FROM orders WHERE amount > 100) SELECT * FROM recent;"
+        cleaned_cte = self.validator.sanitize_and_validate(cte_query)
+        self.assertIn("SELECT", cleaned_cte)
+
+    def test_ast_subquery_mutation_blocked(self):
+        mutation_subqueries = [
+            "SELECT * FROM users WHERE id IN (DELETE FROM customers WHERE id = 1);",
+            "SELECT (UPDATE products SET price = 0) AS res FROM orders;"
+        ]
+        for q in mutation_subqueries:
+            with self.subTest(query=q):
+                with self.assertRaises(SecurityValidationError):
+                    self.validator.sanitize_and_validate(q)
+
+    def test_ast_empty_or_whitespace_or_comment_only_blocked(self):
+        invalid = ["", "   ", "-- only comment\n", "/* only block comment */"]
+        for q in invalid:
+            with self.subTest(query=q):
+                with self.assertRaises(SecurityValidationError):
+                    self.validator.sanitize_and_validate(q)
+
 
 if __name__ == "__main__":
     unittest.main()
