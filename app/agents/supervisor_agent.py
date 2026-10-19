@@ -1,4 +1,6 @@
 import re
+import concurrent.futures
+from collections import OrderedDict
 from typing import Dict, Any, List, Optional
 from langgraph.graph import StateGraph, START, END
 from app.agents.base_agent import AgentState
@@ -8,8 +10,33 @@ from app.llms.llm_factory import get_llm
 from app.schemas.core_schemas.structured_output_schema import RouteDecision
 from app.agents.checkpoint_saver import SqliteSaver, get_default_checkpointer
 
-# In-memory session store for backwards-compatible inspection
-session_memory_store: Dict[str, List[Dict[str, str]]] = {}
+
+class BoundedSessionStore(OrderedDict):
+    """
+    LRU bounded session store that evicts oldest sessions and caps turns.
+    Prevents unbounded memory leaks during prolonged server execution.
+    """
+    def __init__(self, max_sessions: int = 500, max_turns: int = 50, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.max_sessions = max_sessions
+        self.max_turns = max_turns
+
+    def __getitem__(self, key: str) -> List[Dict[str, str]]:
+        val = super().__getitem__(key)
+        self.move_to_end(key)
+        return val
+
+    def __setitem__(self, key: str, value: List[Dict[str, str]]) -> None:
+        if len(self) >= self.max_sessions and key not in self:
+            self.popitem(last=False)
+        if isinstance(value, list) and len(value) > self.max_turns:
+            value = value[-self.max_turns:]
+        super().__setitem__(key, value)
+        self.move_to_end(key)
+
+
+# Bounded in-memory session store for backwards-compatible inspection
+session_memory_store: BoundedSessionStore = BoundedSessionStore()
 
 def classify_intent(state: AgentState) -> Dict[str, Any]:
     """Classifies user query into 'general' (greetings/chitchat), 'rag' (documents), 'sql' (database), or 'combined' (both)."""
@@ -142,10 +169,15 @@ def sql_node(state: AgentState) -> Dict[str, Any]:
 
 
 def combined_node(state: AgentState) -> Dict[str, Any]:
-    """Handles multi-faceted questions needing both RAG documents and SQL data."""
+    """Handles multi-faceted questions needing both RAG documents and SQL data concurrently."""
     question = state["question"]
-    rag_res = retrieval_service.ask(question)
-    sql_res = sql_agent.answer_question(question)
+
+    # Execute RAG retrieval and SQL query concurrently to halve response latency
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        rag_future = executor.submit(retrieval_service.ask, question)
+        sql_future = executor.submit(sql_agent.answer_question, question)
+        rag_res = rag_future.result()
+        sql_res = sql_future.result()
 
     synthesis_prompt = (
         "You are an enterprise AI data assistant. Synthesize a single comprehensive, "
@@ -258,6 +290,12 @@ class SafeGraphWrapper:
             config = {"configurable": {"thread_id": thread_id}}
         return self._inner.invoke(input_val, config=config, **kwargs)
 
+    def stream(self, input_val: Dict[str, Any], config: Optional[Dict[str, Any]] = None, **kwargs):
+        if config is None or "configurable" not in config:
+            thread_id = input_val.get("session_id", "default") if isinstance(input_val, dict) else "default"
+            config = {"configurable": {"thread_id": thread_id}}
+        return self._inner.stream(input_val, config=config, **kwargs)
+
     def get_state(self, config: Dict[str, Any], **kwargs):
         return self._inner.get_state(config, **kwargs)
 
@@ -309,7 +347,8 @@ def process_chat_message(message: str, session_id: str = "default") -> Dict[str,
 
 def process_chat_stream(message: str, session_id: str = "default"):
     """
-    High-level conversation coordinator yielding real-time events and token chunks.
+    High-level conversation coordinator yielding real-time events and token chunks
+    driven natively through the compiled LangGraph orchestration state machine.
     Yields events:
       - {"type": "status", "step": "..."}
       - {"type": "intent", "intent": "..."}
@@ -324,9 +363,7 @@ def process_chat_stream(message: str, session_id: str = "default"):
     if state_tuple and hasattr(state_tuple, "values") and state_tuple.values.get("messages"):
         history = list(state_tuple.values["messages"])
     else:
-        if session_id not in session_memory_store:
-            session_memory_store[session_id] = []
-        history = session_memory_store[session_id]
+        history = session_memory_store.get(session_id, [])
 
     yield {"type": "status", "step": "Analyzing query intent..."}
 
@@ -342,166 +379,56 @@ def process_chat_stream(message: str, session_id: str = "default"):
         "sql_logs": None
     }
 
-    # 1. Classify intent
-    class_res = classify_intent(initial_state)
-    intent = class_res["intent"]
-    yield {"type": "intent", "intent": intent}
-
-    full_tokens = []
+    intent = None
+    final_answer = ""
     sources = []
     sql_query = None
     sql_logs = None
 
-    if intent == "general":
-        yield {"type": "status", "step": "Generating response..."}
-        gen_res = general_node(initial_state)
-        final_answer = gen_res["final_answer"]
-        words = final_answer.split(" ")
-        for i, w in enumerate(words):
-            token = w + (" " if i < len(words) - 1 else "")
-            full_tokens.append(token)
-            yield {"type": "token", "content": token}
+    # Stream execution directly from the compiled LangGraph orchestration graph
+    for update in orchestration_graph.stream(initial_state, config=config, stream_mode="updates"):
+        for node_name, node_output in update.items():
+            if node_name == "classifier":
+                intent = node_output.get("intent")
+                yield {"type": "intent", "intent": intent}
+                if intent == "general":
+                    yield {"type": "status", "step": "Generating response..."}
+                elif intent == "rag":
+                    yield {"type": "status", "step": "Searching knowledge base in vector database..."}
+                elif intent == "sql":
+                    yield {"type": "status", "step": "Executing database analytics..."}
+                elif intent == "combined":
+                    yield {"type": "status", "step": "Querying documents and database concurrently..."}
 
-    elif intent == "rag":
-        yield {"type": "status", "step": "Searching knowledge base in vector database..."}
-        hits = retrieval_service.retrieve(message, top_k=3)
-        relevant_hits = [h for h in hits if h.get("score", 0) >= 0.40]
+            elif node_name in ("general_agent", "rag_agent", "sql_agent", "combined_agent"):
+                final_answer = node_output.get("final_answer", "")
+                sources = node_output.get("sources", [])
+                if sources:
+                    yield {"type": "sources", "sources": sources}
 
-        if not relevant_hits:
-            yield {"type": "status", "step": "No matching documents found, providing guidance..."}
-            fallback_res = retrieval_service.ask(message)
-            final_answer = fallback_res["answer"]
-            words = final_answer.split(" ")
-            for i, w in enumerate(words):
-                token = w + (" " if i < len(words) - 1 else "")
-                full_tokens.append(token)
-                yield {"type": "token", "content": token}
-        else:
-            sources = list({h["metadata"].get("source", "Unknown") for h in relevant_hits})
-            yield {"type": "sources", "sources": sources}
-            yield {"type": "status", "step": f"Found {len(relevant_hits)} relevant document chunk(s). Synthesizing answer..."}
+                if node_output.get("sql_result"):
+                    sql_query = node_output["sql_result"].get("sql_query")
+                    sql_logs = node_output.get("sql_logs") or node_output["sql_result"].get("logs")
+                    if sql_query:
+                        yield {"type": "sql_query", "query": sql_query, "logs": sql_logs}
 
-            available_docs = [d.get("source") for d in retrieval_service.vector_store.list_documents() if d.get("source")]
-            docs_summary = ", ".join(sorted(set(available_docs))[:5]) if available_docs else "company policies and guides"
+                # Yield token chunks to frontend
+                words = final_answer.split(" ")
+                for i, w in enumerate(words):
+                    token = w + (" " if i < len(words) - 1 else "")
+                    yield {"type": "token", "content": token}
 
-            context_text = "\n\n---\n\n".join(
-                f"[Source: {hit['metadata'].get('source', 'Unknown')} - Score: {hit['score']:.2f}]\n{hit['content']}"
-                for hit in relevant_hits
-            )
-            prompt = (
-                "You are a helpful, accurate, and polite enterprise AI assistant.\n"
-                "Answer the user's question clearly and accurately using the provided context below.\n"
-                "If the answer cannot be found in the context, do NOT say 'The information is not available in the provided context'. "
-                f"Instead, politely explain that details on that specific topic were not found in the current documents ({docs_summary}), "
-                "and invite the user to upload the relevant file using the 'Upload Document' button in the sidebar.\n\n"
-                f"### Context:\n{context_text}\n\n"
-                f"### Question:\n{message}\n\n"
-                "### Answer:"
-            )
-
-            llm = get_llm(temperature=0.2)
-            try:
-                for chunk in llm.stream(prompt):
-                    content = chunk.content if hasattr(chunk, "content") else str(chunk)
-                    if isinstance(content, list):
-                        content = " ".join([p.get("text", "") for p in content if isinstance(p, dict)])
-                    if content:
-                        full_tokens.append(content)
-                        yield {"type": "token", "content": content}
-            except Exception:
-                resp = llm.invoke(prompt)
-                content = resp.content if hasattr(resp, "content") else str(resp)
-                full_tokens.append(str(content))
-                yield {"type": "token", "content": str(content)}
-
-    elif intent == "sql":
-        yield {"type": "status", "step": "Inspecting database schema..."}
-        yield {"type": "status", "step": "Generating and validating SQL query..."}
-        sql_res = sql_agent.answer_question(message)
-        sql_query = sql_res.get("sql_query")
-        sql_logs = sql_res.get("logs")
-
-        if sql_query:
-            yield {"type": "sql_query", "query": sql_query, "logs": sql_logs}
-
-        yield {"type": "status", "step": "Formatting database insights..."}
-        answer = sql_res.get("answer", "")
-        words = answer.split(" ")
-        for i, w in enumerate(words):
-            token = w + (" " if i < len(words) - 1 else "")
-            full_tokens.append(token)
-            yield {"type": "token", "content": token}
-
-    elif intent == "combined":
-        yield {"type": "status", "step": "Querying both document knowledge base and database..."}
-        rag_res = retrieval_service.ask(message)
-        sql_res = sql_agent.answer_question(message)
-
-        sources = rag_res.get("sources", [])
-        if sources:
-            yield {"type": "sources", "sources": sources}
-
-        sql_query = sql_res.get("sql_query")
-        sql_logs = sql_res.get("logs")
-        if sql_query:
-            yield {"type": "sql_query", "query": sql_query, "logs": sql_logs}
-
-        yield {"type": "status", "step": "Synthesizing unified response with AI..."}
-
-        synthesis_prompt = (
-            "You are an enterprise AI data assistant. Synthesize a single comprehensive, "
-            "coherent response answering all parts of the user's question by combining the document context "
-            "and database results below.\n\n"
-            f"### User Question:\n{message}\n\n"
-            f"### Document Findings:\n{rag_res.get('answer', 'N/A')}\n\n"
-            f"### Database Analytics:\n{sql_res.get('answer', 'N/A')}\n\n"
-            f"Executed SQL: {sql_res.get('sql_query', 'N/A')}\n\n"
-            "### Final Combined Answer:"
-        )
-
-        llm = get_llm(temperature=0.2)
-        try:
-            for chunk in llm.stream(synthesis_prompt):
-                content = chunk.content if hasattr(chunk, "content") else str(chunk)
-                if isinstance(content, list):
-                    content = " ".join([p.get("text", "") for p in content if isinstance(p, dict)])
-                if content:
-                    full_tokens.append(content)
-                    yield {"type": "token", "content": content}
-        except Exception:
-            resp = llm.invoke(synthesis_prompt)
-            content = resp.content if hasattr(resp, "content") else str(resp)
-            full_tokens.append(str(content))
-            yield {"type": "token", "content": str(content)}
-
-    final_answer_str = "".join(full_tokens).strip()
-
-    # Save to session memory and native checkpointer
+    # Sync backwards-compatible bounded session memory store
     if session_id not in session_memory_store:
         session_memory_store[session_id] = []
     session_memory_store[session_id].append({"role": "user", "content": message})
-    session_memory_store[session_id].append({"role": "assistant", "content": final_answer_str})
-
-    try:
-        orchestration_graph.update_state(
-            config,
-            {
-                "messages": [
-                    {"role": "user", "content": message},
-                    {"role": "assistant", "content": final_answer_str}
-                ],
-                "final_answer": final_answer_str,
-                "intent": intent
-            }
-        )
-    except Exception:
-        pass
+    session_memory_store[session_id].append({"role": "assistant", "content": final_answer})
 
     yield {
         "type": "done",
         "session_id": session_id,
         "intent": intent,
-        "final_answer": final_answer_str,
+        "final_answer": final_answer,
         "sources": sources,
         "sql_query": sql_query,
         "sql_logs": sql_logs
