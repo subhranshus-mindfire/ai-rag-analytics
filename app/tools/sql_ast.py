@@ -273,20 +273,11 @@ def parse_one(sql: str, read: Optional[str] = None, **kwargs) -> Expression:
     return Command(key=first_word.lower() or "command", children=children, raw_sql=cleaned)
 
 
-# Module exports
-sqlglot_errors = types.ModuleType("sqlglot.errors")
-sqlglot_errors.ParseError = ParseError
+# Clean internal namespace exports without global sys.modules pollution
+class _ErrorsNamespace:
+    ParseError = ParseError
 
-sqlglot_exp = types.ModuleType("sqlglot.exp")
-for attr_name in dir(ExpNamespace):
-    if not attr_name.startswith("_"):
-        setattr(sqlglot_exp, attr_name, getattr(ExpNamespace, attr_name))
+errors = _ErrorsNamespace
+exp = ExpNamespace
 
-if "sqlglot" not in sys.modules:
-    glot_mod = types.ModuleType("sqlglot")
-    glot_mod.exp = sqlglot_exp
-    glot_mod.parse_one = parse_one
-    glot_mod.errors = sqlglot_errors
-    sys.modules["sqlglot"] = glot_mod
-    sys.modules["sqlglot.exp"] = sqlglot_exp
-    sys.modules["sqlglot.errors"] = sqlglot_errors
+__all__ = ["parse_one", "exp", "errors", "ParseError", "Expression", "Select", "With", "Union"]

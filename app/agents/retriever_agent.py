@@ -139,12 +139,21 @@ class SQLAgent:
         sql_query = exec_result["sql"]
         log_entry = exec_result["log"]
 
+        # Cap rows sent to LLM prompt to prevent token and context window flooding
+        MAX_PROMPT_ROWS = 50
+        capped_rows = rows[:MAX_PROMPT_ROWS]
+        results_label = (
+            f"### Query Results ({len(rows)} rows):"
+            if len(rows) <= MAX_PROMPT_ROWS
+            else f"### Query Results ({len(rows)} rows total, displaying first {MAX_PROMPT_ROWS}):"
+        )
+
         synthesis_prompt = (
             "You are a helpful business analytics assistant. "
             "Convert the SQL execution result below into a clear, concise natural language answer to the user's question.\n\n"
             f"### Question:\n{question}\n\n"
             f"### Executed SQL:\n{sql_query}\n\n"
-            f"### Query Results ({len(rows)} rows):\n{rows}\n\n"
+            f"{results_label}\n{capped_rows}\n\n"
             "### Natural Answer:"
         )
 

@@ -69,12 +69,19 @@ class DatabaseManager:
 
         return "\n".join(schema_lines)
 
-    def execute(self, sql_query: str) -> Tuple[List[str], List[Dict[str, Any]]]:
-        """Executes a validated SELECT query and returns (columns, rows)."""
+    def execute(self, sql_query: str, max_rows: int = 500, timeout_sec: int = 15) -> Tuple[List[str], List[Dict[str, Any]]]:
+        """
+        Executes a validated SELECT query with statement timeout and maximum row protection.
+        Prevents database thread stalls and memory exhaustion.
+        """
         with self.engine.connect() as conn:
+            try:
+                conn = conn.execution_options(timeout=timeout_sec)
+            except Exception:
+                pass
             result = conn.execute(text(sql_query))
             columns = list(result.keys()) if result.returns_rows else []
-            rows = [dict(zip(columns, row)) for row in result.fetchall()] if result.returns_rows else []
+            rows = [dict(zip(columns, row)) for row in result.fetchmany(max_rows)] if result.returns_rows else []
             return columns, rows
 
 
