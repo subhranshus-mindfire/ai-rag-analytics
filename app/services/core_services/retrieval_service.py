@@ -15,6 +15,9 @@ class RetrievalService:
         """Finds top_k relevant context chunks for a given query."""
         query_vector = self.embeddings.embed_query(query)
         hits = self.vector_store.search(query_vector=query_vector, top_k=top_k)
+        for h in hits:
+            if "score" in h:
+                h["score"] = float(h["score"])
         return hits
 
     def ask(self, question: str, top_k: int = 3) -> Dict[str, Any]:

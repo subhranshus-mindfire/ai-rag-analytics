@@ -104,7 +104,7 @@ class QdrantStore:
                 return [
                     {
                         "id": hit.id,
-                        "score": hit.score,
+                        "score": float(hit.score),
                         "content": hit.payload.get("content", ""),
                         "metadata": {k: v for k, v in hit.payload.items() if k != "content"}
                     }
@@ -116,7 +116,7 @@ class QdrantStore:
         # Fallback cosine similarity
         results = []
         for item in self._fallback_store:
-            score = self._cosine_similarity(query_vector, item["vector"])
+            score = float(self._cosine_similarity(query_vector, item["vector"]))
             results.append({
                 "id": item["id"],
                 "score": score,

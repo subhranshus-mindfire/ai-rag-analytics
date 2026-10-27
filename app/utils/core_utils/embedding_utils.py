@@ -32,10 +32,10 @@ class EmbeddingManager:
         self._init_model()
 
         if self._provider == "fastembed":
-            # fastembed returns generator of numpy arrays
-            return [list(embedding) for embedding in self._model.embed(texts)]
+            # fastembed returns generator of numpy arrays - convert elements to native python floats
+            return [[float(x) for x in embedding] for embedding in self._model.embed(texts)]
         elif self._provider == "langchain":
-            return self._model.embed_documents(texts)
+            return [[float(x) for x in emb] for emb in self._model.embed_documents(texts)]
         else:
             return [self._pseudo_embed(t) for t in texts]
 
@@ -44,9 +44,9 @@ class EmbeddingManager:
         self._init_model()
 
         if self._provider == "fastembed":
-            return list(list(self._model.embed([text]))[0])
+            return [float(x) for x in list(self._model.embed([text]))[0]]
         elif self._provider == "langchain":
-            return self._model.embed_query(text)
+            return [float(x) for x in self._model.embed_query(text)]
         else:
             return self._pseudo_embed(text)
 

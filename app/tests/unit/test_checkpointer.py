@@ -123,6 +123,39 @@ class TestLangGraphCheckpointer(unittest.TestCase):
         cp2 = get_default_checkpointer()
         self.assertIs(cp1, cp2)
 
+    def test_numpy_float32_serialization_in_checkpointer(self):
+        """Verify that numpy scalars/arrays (np.float32) do not raise msgpack serialization errors."""
+        import numpy as np
+        saver = SqliteSaver(db_path=":memory:")
+        cfg = {"configurable": {"thread_id": "test_numpy_thread", "checkpoint_ns": "", "checkpoint_id": "c_numpy"}}
+
+        # 1. Test put_writes with numpy float32 and ndarray
+        writes = [
+            ("rag_result", {"score": np.float32(0.92), "embeddings": np.array([0.1, 0.2], dtype=np.float32)}),
+            ("metrics", {"latency": np.float64(12.5), "count": np.int64(42)})
+        ]
+        saver.put_writes(cfg, writes, "task_np_1")
+
+        # 2. Test put with numpy in channel_values
+        checkpoint = {
+            "v": 1,
+            "id": "c_numpy",
+            "ts": "2026-10-27T00:00:00Z",
+            "channel_values": {"rag_result": {"score": np.float32(0.92)}},
+            "channel_versions": {"rag_result": 1},
+            "versions_seen": {},
+            "pending_sends": []
+        }
+        metadata = {"source": "input", "step": 1, "writes": {}}
+        new_versions = {"rag_result": 1}
+        saver.put(cfg, checkpoint, metadata, new_versions)
+
+        # 3. Verify retrieval
+        loaded = saver.get_tuple(cfg)
+        self.assertIsNotNone(loaded)
+        self.assertEqual(loaded.checkpoint["id"], "c_numpy")
+        self.assertAlmostEqual(loaded.checkpoint["channel_values"]["rag_result"]["score"], 0.92, places=2)
+
 
 if __name__ == "__main__":
     unittest.main()
