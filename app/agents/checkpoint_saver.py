@@ -29,11 +29,46 @@ logger = logging.getLogger("CheckpointSaver")
 logger.setLevel(logging.INFO)
 
 
+def _sanitize_for_serde(obj: Any) -> Any:
+    """
+    Recursively converts numpy numbers/arrays and non-serializable primitives to pure Python types.
+    Prevents TypeError: Type is not msgpack serializable: numpy.float32 during LangGraph checkpointing.
+    """
+    if obj is None:
+        return None
+
+    # Check for numpy types safely without hard dependency if numpy not imported
+    type_mod = type(obj).__module__
+    if "numpy" in type_mod:
+        try:
+            import numpy as np
+            if isinstance(obj, np.ndarray):
+                return [_sanitize_for_serde(x) for x in obj.tolist()]
+            if isinstance(obj, (np.floating, float)):
+                return float(obj)
+            if isinstance(obj, (np.integer, int)):
+                return int(obj)
+            if isinstance(obj, (np.bool_, bool)):
+                return bool(obj)
+        except ImportError:
+            pass
+
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_serde(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_for_serde(x) for x in obj]
+    if isinstance(obj, tuple):
+        return tuple(_sanitize_for_serde(x) for x in obj)
+    return obj
+
+
 def _serialize_safe(obj: Any) -> bytes:
     """
     Safely serializes LangGraph checkpoints and metadata without using Python pickle.
     Prevents CWE-502 (Insecure Deserialization / Remote Code Execution).
     """
+    clean_obj = _sanitize_for_serde(obj)
+
     def to_safe(o: Any) -> Any:
         if isinstance(o, bytes):
             return {"__bytes__": base64.b64encode(o).decode("ascii")}
@@ -45,7 +80,7 @@ def _serialize_safe(obj: Any) -> bytes:
             return {k: to_safe(v) for k, v in o.items()}
         return o
 
-    return json.dumps(to_safe(obj)).encode("utf-8")
+    return json.dumps(to_safe(clean_obj)).encode("utf-8")
 
 
 def _deserialize_safe(raw: bytes) -> Any:
@@ -208,7 +243,9 @@ class SqliteSaver(MemorySaver, AbstractContextManager):
         new_versions: ChannelVersions,
     ) -> RunnableConfig:
         """Saves a checkpoint to in-memory state and persists immediately to SQLite using safe JSON."""
-        res = super().put(config, checkpoint, metadata, new_versions)
+        clean_checkpoint = _sanitize_for_serde(checkpoint)
+        clean_metadata = _sanitize_for_serde(metadata)
+        res = super().put(config, clean_checkpoint, clean_metadata, new_versions)
         thread_id = config["configurable"]["thread_id"]
         checkpoint_ns = config["configurable"].get("checkpoint_ns", "")
         c_id = checkpoint["id"]
@@ -238,7 +275,8 @@ class SqliteSaver(MemorySaver, AbstractContextManager):
         task_path: str = "",
     ) -> None:
         """Saves intermediate node writes to in-memory state and persists immediately to SQLite."""
-        super().put_writes(config, writes, task_id, task_path)
+        clean_writes = [(c, _sanitize_for_serde(v)) for c, v in writes]
+        super().put_writes(config, clean_writes, task_id, task_path)
         thread_id = config["configurable"]["thread_id"]
         checkpoint_ns = config["configurable"].get("checkpoint_ns", "")
         checkpoint_id = config["configurable"]["checkpoint_id"]
